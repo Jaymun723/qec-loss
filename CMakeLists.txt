@@ -17,7 +17,21 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)
-find_package(pybind11 CONFIG REQUIRED)
+
+# Prefer a system-installed pybind11, but fall back to fetching it at configure
+# time when it's not available. This makes configuring in clean environments
+# (e.g., CI or fresh developer machines) work without requiring a separate
+# pybind11 installation step.
+find_package(pybind11 CONFIG QUIET)
+if(NOT pybind11_FOUND)
+    include(FetchContent)
+    FetchContent_Declare(
+        pybind11
+        GIT_REPOSITORY https://github.com/pybind/pybind11.git
+        GIT_TAG v2.11.1
+    )
+    FetchContent_MakeAvailable(pybind11)
+endif()
 
 set(STIM_ROOT "${CMAKE_SOURCE_DIR}/extern/stim")
 if(NOT EXISTS "${STIM_ROOT}/src/stim/circuit/circuit.h")

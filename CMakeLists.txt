@@ -1,0 +1,61 @@
+cmake_minimum_required(VERSION 3.20)
+project(vsim_fast_loss LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release)
+endif()
+
+# GCC >= 15 enforces transitive header inclusion; several stim headers omit
+# <cstdint> and rely on it being pulled in indirectly. Force-include it
+# everywhere so the upstream stim source compiles without modification.
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    add_compile_options(-include cstdint -fno-strict-aliasing -O3 -g0)
+endif()
+
+find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)
+find_package(pybind11 CONFIG REQUIRED)
+
+set(STIM_ROOT "${CMAKE_SOURCE_DIR}/extern/stim")
+if(NOT EXISTS "${STIM_ROOT}/src/stim/circuit/circuit.h")
+    message(FATAL_ERROR
+        "extern/stim is empty. Initialise submodules with:\n"
+        "  git submodule update --init --recursive")
+endif()
+
+# Glob all of stim's .cc files, then drop everything we don't need:
+#   - tests and perf benchmarks,
+#   - stim's own pybind11 bindings (we provide our own module entry),
+#   - executable-only sources (main*.cc, stim.cc),
+#   - subsystems unused by TableauSimulator: cmd/, diagram/, gen/, search/, py/.
+file(GLOB_RECURSE STIM_SOURCES CONFIGURE_DEPENDS
+    "${STIM_ROOT}/src/stim/*.cc"
+)
+list(FILTER STIM_SOURCES EXCLUDE REGEX "\\.test\\.cc$")
+list(FILTER STIM_SOURCES EXCLUDE REGEX "\\.perf\\.cc$")
+list(FILTER STIM_SOURCES EXCLUDE REGEX "\\.pybind\\.cc$")
+list(FILTER STIM_SOURCES EXCLUDE REGEX "/stim/cmd/")
+list(FILTER STIM_SOURCES EXCLUDE REGEX "/stim/diagram/")
+list(FILTER STIM_SOURCES EXCLUDE REGEX "/stim/gen/")
+list(FILTER STIM_SOURCES EXCLUDE REGEX "/stim/search/")
+list(FILTER STIM_SOURCES EXCLUDE REGEX "/stim/py/")
+list(FILTER STIM_SOURCES EXCLUDE REGEX "/stim/main_namespaced\\.cc$")
+list(FILTER STIM_SOURCES EXCLUDE REGEX "/stim/main\\.cc$")
+
+pybind11_add_module(_fast_qec_loss MODULE
+    src/_fast_qec_loss/fast_qec_loss.cc
+    ${STIM_SOURCES}
+)
+
+target_include_directories(_fast_qec_loss PRIVATE
+    "${STIM_ROOT}/src"
+)
+
+target_compile_definitions(_fast_qec_loss PRIVATE
+    STIM_PYBIND11_MODULE_NAME=_fast_qec_loss
+)
+
+install(TARGETS _fast_qec_loss LIBRARY DESTINATION .)

@@ -1,0 +1,5 @@
+.venv/
+build/
+playground/
+
+**/__pycache__/

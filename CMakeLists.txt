@@ -4,6 +4,7 @@ project(vsim_fast_loss LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
@@ -59,8 +60,12 @@ list(FILTER STIM_SOURCES EXCLUDE REGEX "/stim/py/")
 list(FILTER STIM_SOURCES EXCLUDE REGEX "/stim/main_namespaced\\.cc$")
 list(FILTER STIM_SOURCES EXCLUDE REGEX "/stim/main\\.cc$")
 
+file(GLOB FAST_QEC_LOSS_SOURCES CONFIGURE_DEPENDS
+    "src/_fast_qec_loss/*.cc"
+)
+
 pybind11_add_module(_fast_qec_loss MODULE
-    src/_fast_qec_loss/fast_qec_loss.cc
+    ${FAST_QEC_LOSS_SOURCES}
     ${STIM_SOURCES}
 )
 

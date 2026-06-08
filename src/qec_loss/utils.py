@@ -1,3 +1,15 @@
+import stim
+
+
+def count_measurements(circuit: stim.Circuit) -> int:
+    """Count the total number of measurement targets in a stim circuit."""
+    return sum(
+        len(instr.targets_copy())
+        for instr in circuit.instructions
+        if isinstance(instr, stim.CircuitInstruction) and instr.name in {"M", "MR", "MRX", "MRY", "MRZ"}
+    )
+
+
 _1Q_GATES = {
     "I",
     "X",

@@ -2,6 +2,7 @@
 
 #include <cctype>
 #include <charconv>
+#include <sstream>
 #include <stdexcept>
 
 namespace qec_loss {
@@ -95,5 +96,22 @@ LossInstruction::LossInstruction(std::string_view s) {
             ++pos;
         }
     }
+}
+std::string LossInstruction::str() const {
+    std::stringstream s;
+
+    s << "LOSS";
+
+    if (!tag.empty()) {
+        s << "[" << tag << "]";
+    }
+
+    s << "(" << p << ")";
+
+    for (uint32_t target : targets) {
+        s << " " << target;
+    }
+
+    return s.str();
 }
 } // namespace qec_loss

@@ -23,5 +23,7 @@ class LossInstruction {
         : LossInstruction(std::move(targets), p, "") {};
 
     LossInstruction(std::string_view instruction_str);
+
+    std::string str() const;
 };
 } // namespace qec_loss

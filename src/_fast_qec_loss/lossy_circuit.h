@@ -13,10 +13,9 @@ namespace qec_loss {
 using Instruction = std::variant<LossInstruction, stim::CircuitInstruction>;
 
 class LossyCircuit {
-  private:
-    size_t total_measurements_upper_bound = 0;
 
   public:
+    size_t total_measurements_upper_bound = 0;
     stim::Circuit nominal_circuit;
     size_t num_qubits = 0;
     std::vector<Instruction> instructions;

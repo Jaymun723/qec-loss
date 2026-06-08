@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(vsim_fast_loss LANGUAGES CXX)
+project(qec_fast_loss LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

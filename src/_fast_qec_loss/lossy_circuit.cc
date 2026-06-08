@@ -54,7 +54,6 @@ LossyCircuit::LossyCircuit(const std::string_view circuit_str) {
             }
         }
     }
-    // std::cout << str() << "\n"; <- yields garbage
     num_qubits = nominal_circuit.count_qubits();
 }
 

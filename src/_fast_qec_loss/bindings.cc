@@ -2,6 +2,9 @@
 #include "circuit/circuit.pybind.h"
 #include "sampler/sampler.pybind.h"
 
+#include "pymatching/sparse_blossom/driver/mwpm_decoding.h"
+#include "xxhash.h"
+
 namespace py = pybind11;
 
 PYBIND11_MODULE(_fast_qec_loss, m) {

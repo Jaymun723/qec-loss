@@ -16,13 +16,6 @@ class ForwardSampler : public Sampler {
     ForwardSampler(const LossyCircuit &circuit,
                    std::optional<uint64_t> seed = std::nullopt);
 
-    std::tuple<py::array_t<uint8_t>, std::vector<LossPattern>>
-    sample_measurements(size_t num_samples) override;
-
-    std::tuple<py::array_t<uint8_t>, py::array_t<uint8_t>,
-               std::vector<LossPattern>>
-    sample_detectors(size_t num_samples) override;
-
-    std::vector<Experiment> sample_experiments(size_t num_samples) override;
+    SampleBatch sample(size_t num_samples) override;
 };
 } // namespace qec_loss

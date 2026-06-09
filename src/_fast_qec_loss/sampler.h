@@ -13,30 +13,31 @@ namespace qec_loss {
 
 using LossPattern = std::vector<std::tuple<uint32_t, std::vector<uint32_t>>>;
 
-class Experiment {
+class SampleBatch {
   public:
     py::array_t<uint8_t> measurements;
     py::array_t<uint8_t> detectors;
     py::array_t<uint8_t> observables;
     std::vector<LossPattern> loss_patterns;
+
+    SampleBatch(size_t num_samples, size_t num_measurements,
+                size_t num_detectors, size_t num_observables)
+        : measurements({num_samples, num_measurements}),
+          detectors({num_samples, num_detectors}),
+          observables({num_samples, num_observables}) {
+        loss_patterns.reserve(num_samples);
+    };
 };
 
 class Sampler {
   protected:
     std::mt19937_64 rng;
-    LossyCircuit circuit;
 
   public:
+    LossyCircuit circuit;
     Sampler(const LossyCircuit &circuit, uint64_t seed);
     virtual ~Sampler() = default;
 
-    virtual std::tuple<py::array_t<uint8_t>, std::vector<LossPattern>>
-    sample_measurements(size_t num_samples) = 0;
-
-    virtual std::tuple<py::array_t<uint8_t>, py::array_t<uint8_t>,
-                       std::vector<LossPattern>>
-    sample_detectors(size_t num_samples) = 0;
-
-    virtual std::vector<Experiment> sample_experiments(size_t num_samples) = 0;
+    virtual SampleBatch sample(size_t num_samples) = 0;
 };
 } // namespace qec_loss

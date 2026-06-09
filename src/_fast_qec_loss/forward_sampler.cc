@@ -17,7 +17,7 @@ ForwardSampler::ForwardSampler(const LossyCircuit &circuit,
 void ForwardSampler::populate_shot_circuit(
     stim::Circuit &shot_circuit, std::vector<uint32_t> &lost_measurements,
     LossPattern &loss_patterns) {
-    std::vector<uint8_t> lost_qubits(circuit.num_qubits, 0);
+    std::vector<uint8_t> lost_qubits(circuit.nominal_circuit.count_qubits(), 0);
     size_t measurement_index = 0;
     bool has_qubit_lost = false;
     size_t loss_index = 0;
@@ -44,41 +44,38 @@ void ForwardSampler::populate_shot_circuit(
             loss_index++;
         } else {
             const auto &circuit_instr =
-                std::get<stim::CircuitInstruction>(instr);
-            do_instruction(circuit_instr, shot_circuit, lost_measurements,
-                           measurement_index, lost_qubits);
-            // if (has_qubit_lost) {
-            //     do_instruction(circuit_instr, shot_circuit,
-            //     lost_measurements,
-            //                    measurement_index, lost_qubits);
-            //     InstructionCategory cat =
-            //     categorize_instruction(circuit_instr); if (cat ==
-            //     InstructionCategory::RESET ||
-            //         cat == InstructionCategory::MEASUREMENT_AND_RESET) {
-            //         has_qubit_lost = false;
-            //         for (const auto &p : lost_qubits) {
-            //             if (p) {
-            //                 has_qubit_lost = true;
-            //                 break;
-            //             }
-            //         }
-            //     }
-            // } else {
-            //     shot_circuit.safe_append(circuit_instr);
-            //     measurement_index +=
-            //     circuit_instr.count_measurement_results();
-            // }
+                circuit.nominal_circuit.operations[std::get<size_t>(instr)];
+            // do_instruction(circuit_instr, shot_circuit, lost_measurements,
+            //                measurement_index, lost_qubits);
+            if (has_qubit_lost) {
+                do_instruction(circuit_instr, shot_circuit, lost_measurements,
+                               measurement_index, lost_qubits);
+                InstructionCategory cat = categorize_instruction(circuit_instr);
+                if (cat == InstructionCategory::RESET ||
+                    cat == InstructionCategory::MEASUREMENT_AND_RESET) {
+                    has_qubit_lost = false;
+                    for (const auto &p : lost_qubits) {
+                        if (p) {
+                            has_qubit_lost = true;
+                            break;
+                        }
+                    }
+                }
+            } else {
+                shot_circuit.safe_append(circuit_instr);
+                measurement_index += circuit_instr.count_measurement_results();
+            }
         }
     }
 }
 
-std::tuple<py::array_t<uint8_t>, std::vector<LossPattern>>
-ForwardSampler::sample_measurements(size_t num_samples) {
-    py::array_t<uint8_t> measurements(
-        {num_samples, circuit.total_measurements_upper_bound});
-    auto measurements_access = measurements.mutable_unchecked<2>();
-    std::vector<LossPattern> loss_patterns;
-    loss_patterns.reserve(num_samples);
+SampleBatch ForwardSampler::sample(size_t num_samples) {
+    SampleBatch batch(num_samples, circuit.num_measurements,
+                      circuit.num_detectors, circuit.num_observables);
+
+    auto measurements_access = batch.measurements.mutable_unchecked<2>();
+    auto detectors_access = batch.detectors.mutable_unchecked<2>();
+    auto observables_access = batch.observables.mutable_unchecked<2>();
 
     for (size_t shot_i = 0; shot_i < num_samples; shot_i++) {
         stim::Circuit shot_circuit;
@@ -87,7 +84,7 @@ ForwardSampler::sample_measurements(size_t num_samples) {
 
         populate_shot_circuit(shot_circuit, lost_measurements, loss_pattern);
 
-        loss_patterns.push_back(std::move(loss_pattern));
+        batch.loss_patterns.push_back(std::move(loss_pattern));
 
         // Run the shot circuit and record measurements.
         stim::TableauSimulator<stim::MAX_BITWORD_WIDTH> sim(
@@ -99,21 +96,46 @@ ForwardSampler::sample_measurements(size_t num_samples) {
         const auto &storage = sim.measurement_record.storage;
         size_t n_meas = storage.size();
         for (size_t i = 0; i < n_meas; ++i) {
-            measurements_access(shot_i, i) = storage[i] ? 1 : 0;
+            measurements_access(shot_i, i) =
+                storage[i] ? (uint8_t)1 : (uint8_t)0;
         }
         for (size_t pos : lost_measurements) {
-            measurements_access(shot_i, pos) = 2;
+            measurements_access(shot_i, pos) = (uint8_t)2;
+        }
+
+        size_t current_meas_index = 0;
+        size_t current_det_index = 0;
+        size_t current_obs_index = 0;
+        for (const auto &op : shot_circuit.operations) {
+            if (op.gate_type == stim::GateType::M) {
+                current_meas_index += op.targets.size();
+            } else if (op.gate_type == stim::GateType::DETECTOR) {
+                uint8_t det_val = 0;
+                for (const auto &target : op.targets) {
+                    if (target.is_measurement_record_target()) {
+                        int idx = current_meas_index + target.value();
+                        if (idx >= 0 && idx < (int)n_meas) {
+                            det_val ^= storage[idx] ? (uint8_t)1 : (uint8_t)0;
+                        }
+                    }
+                }
+                detectors_access(shot_i, current_det_index) = det_val;
+                current_det_index++;
+            } else if (op.gate_type == stim::GateType::OBSERVABLE_INCLUDE) {
+                uint8_t obs_val = 0;
+                for (const auto &target : op.targets) {
+                    if (target.is_measurement_record_target()) {
+                        int idx = current_meas_index + target.value();
+                        if (idx >= 0 && idx < (int)n_meas) {
+                            obs_val ^= storage[idx] ? (uint8_t)1 : (uint8_t)0;
+                        }
+                    }
+                }
+                observables_access(shot_i, current_obs_index) = obs_val;
+                current_obs_index++;
+            }
         }
     }
-    return std::make_tuple(measurements, loss_patterns);
-}
-
-std::tuple<py::array_t<uint8_t>, py::array_t<uint8_t>, std::vector<LossPattern>>
-ForwardSampler::sample_detectors(size_t num_samples) {
-    return std::tuple<py::array_t<uint8_t>, py::array_t<uint8_t>,
-                      std::vector<LossPattern>>();
-}
-std::vector<Experiment> ForwardSampler::sample_experiments(size_t num_samples) {
-    return std::vector<Experiment>();
+    return batch;
 }
 } // namespace qec_loss

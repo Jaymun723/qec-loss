@@ -47,14 +47,14 @@ LossyCircuit::LossyCircuit(const std::string_view circuit_str) {
             }
             for (const auto op : tmp_circuit.flattened().operations) {
                 nominal_circuit.safe_append(op, true);
-                instructions.emplace_back(nominal_circuit.operations.back());
-
-                total_measurements_upper_bound +=
-                    op.count_measurement_results();
+                instructions.emplace_back(nominal_circuit.operations.size() - 1);
             }
         }
     }
     num_qubits = nominal_circuit.count_qubits();
+    num_measurements = nominal_circuit.count_measurements();
+    num_detectors = nominal_circuit.count_detectors();
+    num_observables = nominal_circuit.count_observables();
 }
 
 LossyCircuit
@@ -84,7 +84,7 @@ std::string LossyCircuit::str() const { // <- yields garbage
         if (std::holds_alternative<LossInstruction>(instr)) {
             out << std::get<LossInstruction>(instr).str() << "\n";
         } else {
-            out << std::get<stim::CircuitInstruction>(instr).str() << "\n";
+            out << nominal_circuit.operations[std::get<size_t>(instr)].str() << "\n";
         }
     }
     return out.str();

@@ -9,16 +9,18 @@
 #include <vector>
 
 namespace qec_loss {
-/// Lightweight owning wrapper for a stim instruction
-using Instruction = std::variant<LossInstruction, stim::CircuitInstruction>;
+/// Lightweight owning wrapper for a stim instruction or reference to nominal_circuit operations
+using Instruction = std::variant<LossInstruction, size_t>;
 
 class LossyCircuit {
-
   public:
-    size_t total_measurements_upper_bound = 0;
     stim::Circuit nominal_circuit;
-    size_t num_qubits = 0;
     std::vector<Instruction> instructions;
+
+    size_t num_qubits;
+    size_t num_measurements;
+    size_t num_detectors;
+    size_t num_observables;
 
     LossyCircuit() = delete;
 

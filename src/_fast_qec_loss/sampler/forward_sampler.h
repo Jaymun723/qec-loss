@@ -2,7 +2,7 @@
 
 #include "sampler.h"
 #include "stim/circuit/circuit.h"
-#include "utils.h"
+#include "../utils.h"
 #include <tuple>
 
 namespace qec_loss {

@@ -2,7 +2,7 @@
 
 #include "stim/circuit/circuit.h"
 #include "stim/circuit/circuit_instruction.h"
-#include "utils.h"
+#include "../utils.h"
 #include <cstdint>
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>

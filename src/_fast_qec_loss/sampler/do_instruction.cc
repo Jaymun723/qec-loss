@@ -1,6 +1,6 @@
 #include "do_instruction.h"
 
-#include "utils.h"
+#include "../utils.h"
 
 namespace qec_loss {
 void do_instruction(const stim::CircuitInstruction &instr,

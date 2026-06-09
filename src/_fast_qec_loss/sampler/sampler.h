@@ -1,6 +1,6 @@
 #pragma once
 
-#include "lossy_circuit.h"
+#include "../circuit/lossy_circuit.h"
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>

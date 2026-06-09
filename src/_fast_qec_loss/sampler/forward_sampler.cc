@@ -2,7 +2,7 @@
 #include "do_instruction.h"
 #include "stim/mem/simd_word.h"
 #include "stim/simulators/tableau_simulator.h"
-#include "utils.h"
+#include "../utils.h"
 
 #include <bitset>
 #include <chrono>

@@ -82,7 +82,6 @@ pybind11_add_module(_fast_qec_loss MODULE
     ${FAST_QEC_LOSS_SOURCES}
     ${STIM_SOURCES}
     ${PYMATCHING_SOURCES}
-    "${CMAKE_SOURCE_DIR}/extern/xxhash/xxhash.c"
 )
 
 target_include_directories(_fast_qec_loss PRIVATE

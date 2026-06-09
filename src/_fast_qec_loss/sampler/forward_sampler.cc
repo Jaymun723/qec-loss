@@ -1,8 +1,8 @@
 #include "forward_sampler.h"
+#include "../utils.h"
 #include "do_instruction.h"
 #include "stim/mem/simd_word.h"
 #include "stim/simulators/tableau_simulator.h"
-#include "../utils.h"
 
 #include <bitset>
 #include <chrono>
@@ -10,7 +10,7 @@
 
 namespace qec_loss {
 
-constexpr bool ENABLE_PROFILING = true;
+constexpr bool ENABLE_PROFILING = false;
 
 ForwardSampler::ForwardSampler(const LossyCircuit &circuit,
                                std::optional<uint64_t> seed)
@@ -53,7 +53,7 @@ ForwardSampler::ForwardSampler(const LossyCircuit &circuit,
 }
 
 void ForwardSampler::populate_shot_circuit(
-    stim::Circuit &shot_circuit, std::vector<uint32_t> &lost_measurements,
+    stim::Circuit &shot_circuit, std::vector<size_t> &lost_measurements,
     LossPattern &loss_patterns) {
     std::vector<uint8_t> lost_qubits(circuit.nominal_circuit.count_qubits(), 0);
     size_t measurement_index = 0;
@@ -126,7 +126,7 @@ SampleBatch ForwardSampler::sample(size_t num_samples) {
                       ? std::chrono::high_resolution_clock::now()
                       : std::chrono::high_resolution_clock::time_point{};
         stim::Circuit shot_circuit;
-        std::vector<uint32_t> lost_measurements;
+        std::vector<size_t> lost_measurements;
         LossPattern loss_pattern;
 
         populate_shot_circuit(shot_circuit, lost_measurements, loss_pattern);

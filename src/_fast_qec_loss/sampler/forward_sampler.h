@@ -15,7 +15,7 @@ class ForwardSampler : public Sampler {
     std::vector<InstructionCategory> nominal_instruction_categories;
 
     void populate_shot_circuit(stim::Circuit &shot_circuit,
-                               std::vector<uint32_t> &lost_measurements,
+                               std::vector<size_t> &lost_measurements,
                                LossPattern &loss_patterns);
 
   public:

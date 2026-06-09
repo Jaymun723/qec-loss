@@ -8,17 +8,20 @@ namespace qec_loss {
 
 void pybind_circuit(py::module &m) {
     py::class_<qec_loss::LossInstruction>(m, "LossInstruction")
-        .def(py::init<std::string_view>())
-        .def(py::init<std::vector<uint32_t>, double, std::string_view>())
-        .def(py::init<std::vector<uint32_t>, double>()) // For convenience
+        .def(py::init<std::string_view>(), py::arg("instruction_str"))
+        .def(py::init<std::vector<uint32_t>, double, std::string_view>(),
+             py::arg("targets"), py::arg("p"), py::arg("tag"))
+        .def(py::init<std::vector<uint32_t>, double>(), py::arg("targets"),
+             py::arg("p")) // For convenience
         .def_readonly("p", &qec_loss::LossInstruction::p)
         .def_readonly("targets", &qec_loss::LossInstruction::targets)
         .def_readonly("tag", &qec_loss::LossInstruction::tag)
         .def("__str__", &qec_loss::LossInstruction::str);
 
     py::class_<qec_loss::LossyCircuit>(m, "LossyCircuit")
-        .def(py::init<std::string_view>())
-        .def_static("from_file", &qec_loss::LossyCircuit::from_file)
+        .def(py::init<std::string_view>(), py::arg("circuit_str"))
+        .def_static("from_file", &qec_loss::LossyCircuit::from_file,
+                    py::arg("circuit_path"))
         .def("to_file", &qec_loss::LossyCircuit::to_file)
         .def("__str__", &qec_loss::LossyCircuit::str)
         .def_property_readonly(

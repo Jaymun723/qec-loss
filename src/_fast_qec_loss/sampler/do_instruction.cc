@@ -5,7 +5,7 @@
 namespace qec_loss {
 void do_instruction(const stim::CircuitInstruction &instr,
                     InstructionCategory cat, stim::Circuit &circuit,
-                    std::vector<uint32_t> &lost_measurements,
+                    std::vector<size_t> &lost_measurements,
                     size_t &current_measurement_index,
                     std::vector<uint8_t> &lost_qubits,
                     size_t &num_lost_qubits) {

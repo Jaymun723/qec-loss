@@ -28,3 +28,12 @@ def test_lossy_circuit(tmpdir):
         with open(ref_file, "r") as f_ref:
             ref_str = f_ref.read()
             assert loaded_str == ref_str
+
+
+def test_lossy_circuit_example():
+    lossy_circuit = LossyCircuit("""
+        R 0 1
+        LOSS(0.1) 0 1
+        M 0 1
+        DETECTOR rec[-1] rec[-2]
+    """)

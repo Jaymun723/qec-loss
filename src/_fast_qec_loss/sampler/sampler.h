@@ -11,7 +11,7 @@ namespace py = pybind11;
 
 namespace qec_loss {
 
-using LossPattern = std::vector<std::tuple<uint32_t, std::vector<uint32_t>>>;
+using LossPattern = std::vector<std::tuple<size_t, std::vector<uint32_t>>>;
 
 class SampleBatch {
   public:

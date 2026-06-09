@@ -2,12 +2,18 @@
 
 #include "sampler.h"
 #include "stim/circuit/circuit.h"
+#include "utils.h"
 #include <tuple>
 
 namespace qec_loss {
 class ForwardSampler : public Sampler {
   private:
     std::uniform_real_distribution<double> dist;
+
+    std::vector<std::vector<size_t>> detector_dependencies;
+    std::vector<std::vector<size_t>> observable_dependencies;
+    std::vector<InstructionCategory> nominal_instruction_categories;
+
     void populate_shot_circuit(stim::Circuit &shot_circuit,
                                std::vector<uint32_t> &lost_measurements,
                                LossPattern &loss_patterns);

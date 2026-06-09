@@ -11,6 +11,7 @@ class LossInstruction {
     LossInstruction() = delete;
 
     double p;
+    uint64_t threshold;
 
     std::vector<uint32_t> targets;
 

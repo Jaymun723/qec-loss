@@ -1,4 +1,5 @@
 #include "monaka.pybind.h"
+#include "get_loss_dem.h"
 #include "life_cycle.h"
 #include "monaka_builder.h"
 #include <pybind11/stl.h>
@@ -27,6 +28,33 @@ void pybind_monaka_builder(py::module &m) {
         .def("get_life_cycle", &LifeCycleManager::get_life_cycle)
         .def("get_life_segment_for_measurement",
              &LifeCycleManager::get_life_segment_for_measurement);
+
+    m.def(
+        "get_loss_dem",
+        [](const LossyCircuit &circuit, const uint32_t qubit,
+           const LifeSegment &life_segment) {
+            stim::DetectorErrorModel dem =
+                get_loss_dem(circuit, qubit, life_segment);
+            return py::module_::import("stim").attr("DetectorErrorModel")(
+                dem.str());
+        },
+        py::arg("circuit"), py::arg("qubit"), py::arg("life_segment"));
+
+    // m.def(
+    //     "combine_circuits_into_dem",
+    //     [](const std::vector<py::object> &py_circuits,
+    //        const std::vector<double> &weights) -> py::object {
+    //         std::vector<stim::Circuit> circuits;
+    //         for (const auto &py_c : py_circuits) {
+    //             circuits.push_back(
+    //                 stim::Circuit(py::str(py_c).cast<std::string>()));
+    //         }
+    //         stim::DetectorErrorModel dem =
+    //             combine_circuits_into_dem(circuits, weights);
+    //         return py::module_::import("stim").attr("DetectorErrorModel")(
+    //             dem.str());
+    //     },
+    //     py::arg("circuits"), py::arg("weights"));
 }
 
 } // namespace qec_loss

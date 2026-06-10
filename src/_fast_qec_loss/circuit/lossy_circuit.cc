@@ -46,7 +46,7 @@ LossyCircuit::LossyCircuit(const std::string_view circuit_str) {
                                          std::string(line) + "': " + e.what());
             }
             for (const auto op : tmp_circuit.flattened().operations) {
-                nominal_circuit.safe_append(op, true);
+                nominal_circuit.safe_append(op);
                 instructions.emplace_back(nominal_circuit.operations.size() -
                                           1);
             }

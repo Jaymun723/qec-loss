@@ -39,7 +39,7 @@ stim::DetectorErrorModel MonakaBuilder::get_nominal_dem() const {
                 /*decompose_errors=*/true,
                 /*fold_loops=*/true,
                 /*allow_gauge_detectors=*/false,
-                /*approximate_disjoint_errors_threshold=*/1.0,
+                /*approximate_disjoint_errors_threshold=*/0.0,
                 /*ignore_decomposition_failures=*/false,
                 /*block_decomposition_from_introducing_remnant_edges=*/false);
         std::ofstream dem_file(save_path / "nominal.dem");

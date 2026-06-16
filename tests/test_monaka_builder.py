@@ -23,7 +23,7 @@ def test_monaka_builder(example_circuit, tmpdir):
             example_circuit.nominal_circuit.detector_error_model(
                 decompose_errors=True,
                 allow_gauge_detectors=False,
-                approximate_disjoint_errors=1.0,
+                approximate_disjoint_errors=0.0,
                 ignore_decomposition_failures=False,
                 block_decomposition_from_introducing_remnant_edges=False,
             )

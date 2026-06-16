@@ -1,6 +1,6 @@
 import pytest
 import numpy as np
-from qec_loss._fast_qec_loss import F2Tensor, PackedF2Tensor
+from qec_loss._fast_qec_loss import F2Tensor, PackedF2Matrix
 
 
 def test_f2_tensor_init():
@@ -291,58 +291,66 @@ def test_f2_tensor_linear_algebra():
         _ = A.solve(b_inconsistent)
 
 
-def test_packed_f2_tensor():
-    t = PackedF2Tensor(3, 4)
+def test_packed_f2_matrix():
+    t = PackedF2Matrix(3, 4)
     assert t.rows == 3
     assert t.cols == 4
 
-    # Test get/set
-    t.set(0, 0, 1)
-    t.set(1, 2, 1)
-    t.set(2, 3, 1)
-    assert t.get(0, 0) == 1
-    assert t.get(0, 1) == 0
-    assert t.get(1, 2) == 1
-    assert t.get(2, 3) == 1
+    # Test get/set with bracket indexing
+    t[0, 0] = 1
+    t[1, 2] = 1
+    t[2, 3] = 1
+    assert t[0, 0] == 1
+    assert t[0, 1] == 0
+    assert t[1, 2] == 1
+    assert t[2, 3] == 1
+
+    # Test transpose (.T)
+    trans = t.T
+    assert trans.rows == 4 and trans.cols == 3
+    assert trans[0, 0] == 1
+    assert trans[2, 1] == 1
+    assert trans[3, 2] == 1
+    assert trans[0, 1] == 0
 
     # Test multiplication
     # A (3x2), B (2x4) -> C (3x4)
-    A = PackedF2Tensor(3, 2)
-    B = PackedF2Tensor(2, 4)
+    A = PackedF2Matrix(3, 2)
+    B = PackedF2Matrix(2, 4)
 
-    A.set(0, 0, 1)
-    A.set(1, 1, 1)
-    A.set(2, 0, 1)
-    A.set(2, 1, 1)
+    A[0, 0] = 1
+    A[1, 1] = 1
+    A[2, 0] = 1
+    A[2, 1] = 1
 
-    B.set(0, 0, 1)
-    B.set(0, 1, 1)
-    B.set(0, 3, 1)
-    B.set(1, 1, 1)
-    B.set(1, 2, 1)
-    B.set(1, 3, 1)
+    B[0, 0] = 1
+    B[0, 1] = 1
+    B[0, 3] = 1
+    B[1, 1] = 1
+    B[1, 2] = 1
+    B[1, 3] = 1
 
     C = A @ B
     assert C.rows == 3 and C.cols == 4
-    assert C.get(0, 0) == 1 and C.get(0, 1) == 1 and C.get(0, 2) == 0 and C.get(0, 3) == 1
-    assert C.get(1, 0) == 0 and C.get(1, 1) == 1 and C.get(1, 2) == 1 and C.get(1, 3) == 1
-    assert C.get(2, 0) == 1 and C.get(2, 1) == 0 and C.get(2, 2) == 1 and C.get(2, 3) == 0
+    assert C[0, 0] == 1 and C[0, 1] == 1 and C[0, 2] == 0 and C[0, 3] == 1
+    assert C[1, 0] == 0 and C[1, 1] == 1 and C[1, 2] == 1 and C[1, 3] == 1
+    assert C[2, 0] == 1 and C[2, 1] == 0 and C[2, 2] == 1 and C[2, 3] == 0
 
     # Test matrix multiplication operator @
     C_matmul = A @ B
     for i in range(3):
         for j in range(4):
-            assert C_matmul.get(i, j) == C.get(i, j)
+            assert C_matmul[i, j] == C[i, j]
 
     # Test Linear Algebra: RREF and rank
     # System matrix (3x3):
     # 1 1 0
     # 1 0 1
     # 0 1 1
-    sys_mat = PackedF2Tensor(3, 3)
-    sys_mat.set(0, 0, 1); sys_mat.set(0, 1, 1); sys_mat.set(0, 2, 0)
-    sys_mat.set(1, 0, 1); sys_mat.set(1, 1, 0); sys_mat.set(1, 2, 1)
-    sys_mat.set(2, 0, 0); sys_mat.set(2, 1, 1); sys_mat.set(2, 2, 1)
+    sys_mat = PackedF2Matrix(3, 3)
+    sys_mat[0, 0] = 1; sys_mat[0, 1] = 1; sys_mat[0, 2] = 0
+    sys_mat[1, 0] = 1; sys_mat[1, 1] = 0; sys_mat[1, 2] = 1
+    sys_mat[2, 0] = 0; sys_mat[2, 1] = 1; sys_mat[2, 2] = 1
 
     rref_mat = sys_mat.rref()
     assert rref_mat.rows == 3 and rref_mat.cols == 3
@@ -351,22 +359,51 @@ def test_packed_f2_tensor():
     # Test kernel
     K = sys_mat.kernel()
     assert K.rows == 1 and K.cols == 3
-    assert K.get(0, 0) == 1 and K.get(0, 1) == 1 and K.get(0, 2) == 1
+    assert K[0, 0] == 1 and K[0, 1] == 1 and K[0, 2] == 1
 
     # Test solve
     # Let b = [1, 0, 1]^T
-    b = PackedF2Tensor(3, 1)
-    b.set(0, 0, 1)
-    b.set(1, 0, 0)
-    b.set(2, 0, 1)
+    b = PackedF2Matrix(3, 1)
+    b[0, 0] = 1
+    b[1, 0] = 0
+    b[2, 0] = 1
     
     x = sys_mat.solve(b)
     assert x.rows == 3 and x.cols == 1
     
-    # Check that A * x = b
+    # Check that A @ x = b
     res = sys_mat @ x
-    assert res.get(0, 0) == b.get(0, 0)
-    assert res.get(1, 0) == b.get(1, 0)
-    assert res.get(2, 0) == b.get(2, 0)
+    assert res[0, 0] == b[0, 0]
+    assert res[1, 0] == b[1, 0]
+    assert res[2, 0] == b[2, 0]
+
+    # Test direct XOR helpers (xor_bit and xor_rows)
+    # 1. xor_bit: Toggle a bit
+    t.xor_bit(0, 0)
+    assert t[0, 0] == 0 # originally 1, now toggled to 0
+    t.xor_bit(0, 0)
+    assert t[0, 0] == 1 # toggled back to 1
+
+    # 2. xor_rows: XOR row 1 into row 0
+    # t originally:
+    # 1 0 0 0
+    # 0 0 1 0
+    # 0 0 0 1
+    # After xor_rows(0, 1): row 0 becomes row 0 ^ row 1 = [1, 0, 1, 0]
+    t.xor_rows(0, 1)
+    assert t[0, 0] == 1 and t[0, 1] == 0 and t[0, 2] == 1 and t[0, 3] == 0
+    assert t[1, 0] == 0 and t[1, 1] == 0 and t[1, 2] == 1 and t[1, 3] == 0
+
+    # 3. one and zero: Force bit state
+    t.one(1, 1)
+    assert t[1, 1] == 1
+    t.zero(1, 1)
+    assert t[1, 1] == 0
+    t.one(1, 1)
+    assert t[1, 1] == 1
+    t.zero(0, 0)
+    assert t[0, 0] == 0
+
+
 
 

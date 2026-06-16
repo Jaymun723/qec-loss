@@ -1,6 +1,6 @@
 #include "f2_tensor.pybind.h"
 #include "f2_tensor.h"
-#include "packed_f2_tensor.h"
+#include "packed_f2_matrix.h"
 #include <pybind11/operators.h>
 #include <pybind11/stl.h>
 #include <stdexcept>
@@ -332,17 +332,36 @@ void pybind_f2_tensor(py::module &m) {
                                    t.shape().size(), shape, byte_strides);
         });
 
-    py::class_<PackedF2Tensor>(m, "PackedF2Tensor")
+    py::class_<PackedF2Matrix>(m, "PackedF2Matrix")
         .def(py::init<size_t, size_t>(), py::arg("rows"), py::arg("cols"))
-        .def_property_readonly("rows", &PackedF2Tensor::rows)
-        .def_property_readonly("cols", &PackedF2Tensor::cols)
-        .def("get", &PackedF2Tensor::get, py::arg("r"), py::arg("c"))
-        .def("set", &PackedF2Tensor::set, py::arg("r"), py::arg("c"), py::arg("val"))
-        .def("rref", &PackedF2Tensor::rref)
-        .def("rank", &PackedF2Tensor::rank)
-        .def("kernel", &PackedF2Tensor::kernel)
-        .def("solve", &PackedF2Tensor::solve, py::arg("b"))
-        .def("__matmul__", &PackedF2Tensor::operator*);
+        .def_property_readonly("rows", &PackedF2Matrix::rows)
+        .def_property_readonly("cols", &PackedF2Matrix::cols)
+        .def_property_readonly("T", &PackedF2Matrix::T)
+        .def("rref", &PackedF2Matrix::rref)
+        .def("rank", &PackedF2Matrix::rank)
+        .def("kernel", &PackedF2Matrix::kernel)
+        .def("solve", &PackedF2Matrix::solve, py::arg("b"))
+        .def("xor_rows", &PackedF2Matrix::xor_rows, py::arg("dst"), py::arg("src"))
+        .def("xor_bit", &PackedF2Matrix::xor_bit, py::arg("r"), py::arg("c"))
+        .def("one", &PackedF2Matrix::one, py::arg("r"), py::arg("c"))
+        .def("zero", &PackedF2Matrix::zero, py::arg("r"), py::arg("c"))
+        .def("__matmul__", &PackedF2Matrix::operator*)
+        .def("__getitem__", [](const PackedF2Matrix &t, py::tuple key) -> uint8_t {
+            if (key.size() != 2) {
+                throw std::invalid_argument("Key must be a 2-tuple");
+            }
+            size_t r = py::cast<size_t>(key[0]);
+            size_t c = py::cast<size_t>(key[1]);
+            return t(r, c);
+        })
+        .def("__setitem__", [](PackedF2Matrix &t, py::tuple key, uint8_t val) {
+            if (key.size() != 2) {
+                throw std::invalid_argument("Key must be a 2-tuple");
+            }
+            size_t r = py::cast<size_t>(key[0]);
+            size_t c = py::cast<size_t>(key[1]);
+            t(r, c) = val;
+        });
 }
 
 } // namespace qec_loss

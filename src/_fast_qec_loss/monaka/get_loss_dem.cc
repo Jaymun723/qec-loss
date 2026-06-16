@@ -1,4 +1,5 @@
 #include "get_loss_dem.h"
+#include "../observable/reroute.h"
 #include "../utils.h"
 #include "stim/simulators/error_analyzer.h"
 #include <map>
@@ -167,6 +168,9 @@ stim::DetectorErrorModel get_loss_dem(const LossyCircuit &circuit,
                                       const uint32_t qubit,
                                       const LifeSegment &life_segment) {
     std::vector<stim::Circuit> result(life_segment.loss_locations.size());
+
+    Rerouter rerouter(circuit.nominal_circuit);
+
     for (size_t i = 0; i < circuit.instructions.size(); i++) {
         const Instruction &lossy_inst = circuit.instructions[i];
         if (std::holds_alternative<size_t>(lossy_inst)) {
@@ -182,14 +186,17 @@ stim::DetectorErrorModel get_loss_dem(const LossyCircuit &circuit,
                 continue;
             }
 
-            // drop observables as for now, since we don't have implement
             // reroutting them through the loss
             if (stim_instr.gate_type == stim::GateType::OBSERVABLE_INCLUDE) {
-                continue;
-            }
-
-            // std::cout << i << " -> " << stim_instr.str() << std::endl;
-            if (i <= life_segment.start || i >= life_segment.end) { // easy skip
+                size_t obs_index = static_cast<size_t>(stim_instr.args[0]);
+                for (auto &r : result) {
+                    r.safe_append(stim::CircuitInstruction(
+                        stim_instr.gate_type, stim_instr.args,
+                        rerouter.reroute(obs_index, {qubit}, /*optimize=*/true),
+                        stim_instr.tag));
+                }
+            } else if (i <= life_segment.start ||
+                       i >= life_segment.end) { // easy skip
                 size_t target_inst = std::get<size_t>(lossy_inst);
                 for (auto &r : result) {
                     r.safe_append(
@@ -245,6 +252,26 @@ stim::DetectorErrorModel get_loss_dem(const LossyCircuit &circuit,
     for (size_t i = 0; i < life_segment.loss_locations.size(); i++) {
         w[i] /= tot;
     }
+
+    // for (size_t i = 0; i < result.size(); i++) {
+    //     std::cout << "circuit for loss at " << life_segment.loss_locations[i]
+    //               << " with weight " << w[i] << ":" << std::endl;
+    //     std::cout << result[i].str() << std::endl;
+
+    //     stim::DetectorErrorModel dem =
+    //         stim::ErrorAnalyzer::circuit_to_detector_error_model(
+    //             result[i],
+    //             /*decompose_errors=*/true,
+    //             /*fold_loops=*/true,
+    //             /*allow_gauge_detectors=*/true, // <- this is main thing
+    //             /*approximate_disjoint_errors_threshold=*/0.0,
+    //             /*ignore_decomposition_failures=*/false,
+    //             /*block_decomposition_from_introducing_remnant_edges=*/false)
+    //             .flattened();
+    //     std::cout << "dem for loss at " << life_segment.loss_locations[i]
+    //               << " with weight " << w[i] << ":" << std::endl;
+    //     std::cout << dem.str() << std::endl;
+    // }
 
     return combine_circuits_into_dem(result, w);
 }

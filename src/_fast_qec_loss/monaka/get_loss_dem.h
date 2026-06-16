@@ -34,9 +34,9 @@
 
 namespace qec_loss {
 
-// stim::DetectorErrorModel
-// combine_circuits_into_dem(const std::vector<stim::Circuit> &circuits,
-//                           const std::vector<double> weights);
+stim::DetectorErrorModel
+combine_circuits_into_dem(const std::vector<stim::Circuit> &circuits,
+                          const std::vector<double> weights);
 
 stim::DetectorErrorModel get_loss_dem(const LossyCircuit &circuit,
                                       const uint32_t qubit,

@@ -18,7 +18,7 @@ class MonakaBuilder {
 
     mutable std::optional<stim::DetectorErrorModel> nominal_dem_cache;
 
-    public:
+  public:
     const LossyCircuit &circuit;
     const std::filesystem::path save_path;
 

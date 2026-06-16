@@ -4,6 +4,7 @@
 #include "monaka_builder.h"
 #include <pybind11/stl.h>
 #include <pybind11/stl/filesystem.h>
+#include <optional>
 
 namespace qec_loss {
 void pybind_monaka_builder(py::module &m) {
@@ -40,21 +41,27 @@ void pybind_monaka_builder(py::module &m) {
         },
         py::arg("circuit"), py::arg("qubit"), py::arg("life_segment"));
 
-    // m.def(
-    //     "combine_circuits_into_dem",
-    //     [](const std::vector<py::object> &py_circuits,
-    //        const std::vector<double> &weights) -> py::object {
-    //         std::vector<stim::Circuit> circuits;
-    //         for (const auto &py_c : py_circuits) {
-    //             circuits.push_back(
-    //                 stim::Circuit(py::str(py_c).cast<std::string>()));
-    //         }
-    //         stim::DetectorErrorModel dem =
-    //             combine_circuits_into_dem(circuits, weights);
-    //         return py::module_::import("stim").attr("DetectorErrorModel")(
-    //             dem.str());
-    //     },
-    //     py::arg("circuits"), py::arg("weights"));
+    m.def(
+        "combine_circuits_into_dem",
+        [](const std::vector<py::object> &py_circuits,
+           const std::optional<std::vector<double>> &weights) -> py::object {
+            std::vector<stim::Circuit> circuits;
+            for (const auto &py_c : py_circuits) {
+                circuits.push_back(
+                    stim::Circuit(py::str(py_c).cast<std::string>()));
+            }
+            std::vector<double> w;
+            if (weights.has_value()) {
+                w = weights.value();
+            } else {
+                w = std::vector<double>(circuits.size(), 1.0 / circuits.size());
+            }
+            stim::DetectorErrorModel dem =
+                combine_circuits_into_dem(circuits, w);
+            return py::module_::import("stim").attr("DetectorErrorModel")(
+                dem.str());
+        },
+        py::arg("circuits"), py::arg("weights") = py::none());
 }
 
 } // namespace qec_loss

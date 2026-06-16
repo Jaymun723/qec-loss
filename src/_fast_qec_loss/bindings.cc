@@ -1,4 +1,5 @@
 #include "circuit/circuit.pybind.h"
+#include "f2_tensor/f2_tensor.pybind.h"
 #include "monaka/monaka.pybind.h"
 #include "sampler/sampler.pybind.h"
 #include <pybind11/pybind11.h>
@@ -10,4 +11,5 @@ PYBIND11_MODULE(_fast_qec_loss, m) {
     qec_loss::pybind_circuit(m);
     qec_loss::pybind_sampler(m);
     qec_loss::pybind_monaka_builder(m);
+    qec_loss::pybind_f2_tensor(m);
 }

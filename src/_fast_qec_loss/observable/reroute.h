@@ -24,11 +24,15 @@ class Rerouter {
 
     std::vector<stim::GateTarget>
     reroute(const size_t observable_index,
-            const std::vector<size_t> &lost_qubits, bool optimize) const;
+            const std::vector<uint32_t> &lost_qubits, bool optimize) const;
 
     const std::vector<uint32_t> &get_data_qubits() const {
         return data_qubits_;
     };
+
+    uint32_t get_qubit_for_measurement(size_t measurement_index) const {
+        return measurement_to_qubit[measurement_index];
+    }
 };
 
 } // namespace qec_loss

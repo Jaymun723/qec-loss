@@ -8,20 +8,20 @@ PackedF2Matrix::PackedF2Matrix(size_t rows, size_t cols)
     data_.resize(rows_ * words_per_row_, 0);
 }
 
-
-
 PackedF2Matrix PackedF2Matrix::operator*(const PackedF2Matrix &other) const {
     if (cols_ != other.rows_) {
-        throw std::invalid_argument("Dimension mismatch in matrix multiplication.");
+        throw std::invalid_argument(
+            "Dimension mismatch in matrix multiplication.");
     }
     PackedF2Matrix result(rows_, other.cols_);
     size_t words_per_row = other.words_per_row_;
-    
+
     for (size_t i = 0; i < rows_; ++i) {
         for (size_t j = 0; j < cols_; ++j) {
             if ((*this)(i, j) == 1) {
                 for (size_t w = 0; w < words_per_row; ++w) {
-                    result.data_[i * words_per_row + w] ^= other.data_[j * words_per_row + w];
+                    result.data_[i * words_per_row + w] ^=
+                        other.data_[j * words_per_row + w];
                 }
             }
         }
@@ -95,7 +95,7 @@ size_t PackedF2Matrix::rank() const {
 
 PackedF2Matrix PackedF2Matrix::kernel() const {
     PackedF2Matrix rref_mat = this->rref();
-    
+
     std::vector<int> row_to_pivot(rows_, -1);
     std::vector<bool> is_pivot(cols_, false);
     for (size_t r = 0; r < rows_; ++r) {
@@ -133,7 +133,8 @@ PackedF2Matrix PackedF2Matrix::kernel() const {
 
 PackedF2Matrix PackedF2Matrix::solve(const PackedF2Matrix &b) const {
     if (b.rows_ != rows_ || b.cols_ != 1) {
-        throw std::invalid_argument("b must be a column vector of shape rows x 1.");
+        throw std::invalid_argument(
+            "b must be a column vector of shape rows x 1.");
     }
 
     PackedF2Matrix aug(rows_, cols_ + 1);
@@ -170,6 +171,20 @@ PackedF2Matrix PackedF2Matrix::solve(const PackedF2Matrix &b) const {
     }
 
     return x;
+}
+
+std::string PackedF2Matrix::str() const {
+    std::string result;
+    for (size_t r = 0; r < rows(); ++r) {
+        for (size_t c = 0; c < cols(); ++c) {
+            result += std::to_string((*this)(r, c));
+            if (c < cols() - 1) {
+                result += " ";
+            }
+        }
+        result += "\n";
+    }
+    return result;
 }
 
 } // namespace qec_loss

@@ -6,8 +6,9 @@
 #include <sstream>
 
 namespace qec_loss {
-
-LossyCircuit::LossyCircuit(const std::string_view circuit_str) {
+LossyCircuit::ParseResult
+LossyCircuit::parse_circuit(const std::string_view circuit_str) {
+    LossyCircuit::ParseResult result;
     size_t pos = 0;
     while (pos < circuit_str.size()) {
         size_t next_pos = circuit_str.find('\n', pos);
@@ -35,7 +36,7 @@ LossyCircuit::LossyCircuit(const std::string_view circuit_str) {
         }
 
         if (line.size() >= 4 && line.substr(0, 4) == "LOSS") {
-            instructions.emplace_back(LossInstruction(line));
+            result.instructions.emplace_back(LossInstruction(line));
         } else {
             stim::Circuit tmp_circuit;
             try {
@@ -46,18 +47,26 @@ LossyCircuit::LossyCircuit(const std::string_view circuit_str) {
                                          std::string(line) + "': " + e.what());
             }
             for (const auto op : tmp_circuit.flattened().operations) {
-                nominal_circuit.safe_append(op, /* block_fusion=*/true);
-                instructions.emplace_back(nominal_circuit.operations.size() -
-                                          1);
+                result.nominal_circuit.safe_append(op, /* block_fusion=*/true);
+                result.instructions.emplace_back(
+                    result.nominal_circuit.operations.size() - 1);
             }
         }
     }
-    num_qubits = nominal_circuit.count_qubits();
-    num_measurements = nominal_circuit.count_measurements();
-    num_detectors = nominal_circuit.count_detectors();
-    num_observables = nominal_circuit.count_observables();
-    num_instructions = instructions.size();
+    return result;
 }
+
+LossyCircuit::LossyCircuit(const std::string_view circuit_str)
+    : LossyCircuit(parse_circuit(circuit_str)) {}
+
+LossyCircuit::LossyCircuit(ParseResult parse_result)
+    : nominal_circuit(std::move(parse_result.nominal_circuit)),
+      instructions(std::move(parse_result.instructions)),
+      num_qubits(nominal_circuit.count_qubits()),
+      num_measurements(nominal_circuit.count_measurements()),
+      num_detectors(nominal_circuit.count_detectors()),
+      num_observables(nominal_circuit.count_observables()),
+      num_instructions(instructions.size()), rerouter(nominal_circuit) {}
 
 LossyCircuit
 LossyCircuit::from_file(const std::filesystem::path &circuit_path) {
@@ -80,7 +89,7 @@ void LossyCircuit::to_file(const std::filesystem::path &circuit_path) const {
     f << str();
 }
 
-std::string LossyCircuit::str() const { // <- yields garbage
+std::string LossyCircuit::str() const {
     std::stringstream out;
     for (const auto &instr : instructions) {
         if (std::holds_alternative<LossInstruction>(instr)) {

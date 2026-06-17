@@ -1,4 +1,4 @@
-from qec_loss._fast_qec_loss import ForwardSampler, LossyCircuit
+from qec_loss._fast_qec_loss import ForwardSampler, LossyCircuit, SampleBatch
 import pytest
 
 
@@ -10,10 +10,18 @@ def test_forward_sampler(example_circuit, seed):
         sampler = ForwardSampler(example_circuit)
 
     batch = sampler.sample(10)
+    assert isinstance(batch, SampleBatch)
     measurements = batch.measurements
     loss_patterns = batch.loss_patterns
     assert measurements.shape == (10, 145)
     assert len(loss_patterns) == 10
+    
+    # Test __repr__
+    repr_str = repr(batch)
+    assert repr_str.startswith("SampleBatch(measurements=array(")
+    assert "detectors=array(" in repr_str
+    assert "observables=array(" in repr_str
+    assert "loss_patterns=" in repr_str
 
 
 def test_logic_forward():

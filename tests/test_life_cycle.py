@@ -72,26 +72,26 @@ def test_life_cycle_manager():
     assert data2_life_cycle[0].loss_locations == [7, 16]
 
     # measurement to life segment mapping
-    qubit_index, life_segment = life_manager.get_life_segment_for_measurement(0)
-    assert qubit_index == 0
+    life_segment = life_manager.get_life_segment_for_measurement(0)
+    assert life_segment.qubit == 0
     assert life_segment.start == 0
     assert life_segment.end == 10
     assert life_segment.loss_locations == [4, 7]
 
-    qubit_index, life_segment = life_manager.get_life_segment_for_measurement(1)
-    assert qubit_index == 0
+    life_segment = life_manager.get_life_segment_for_measurement(1)
+    assert life_segment.qubit == 0
     assert life_segment.start == 10
     assert life_segment.end == 22
     assert life_segment.loss_locations == [13, 16]
 
-    qubit_index, life_segment = life_manager.get_life_segment_for_measurement(2)
-    assert qubit_index == 1
+    life_segment = life_manager.get_life_segment_for_measurement(2)
+    assert life_segment.qubit == 1
     assert life_segment.start == 0
     assert life_segment.end == 22
     assert life_segment.loss_locations == [4, 13]
 
-    qubit_index, life_segment = life_manager.get_life_segment_for_measurement(3)
-    assert qubit_index == 2
+    life_segment = life_manager.get_life_segment_for_measurement(3)
+    assert life_segment.qubit == 2
     assert life_segment.start == 0
     assert life_segment.end == 22
     assert life_segment.loss_locations == [7, 16]

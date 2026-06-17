@@ -5,8 +5,11 @@ namespace qec_loss {
 LifeCycleManager::LifeCycleManager(const LossyCircuit &circuit)
     : circuit(circuit),
       life_cycles(circuit.num_qubits, std::vector<LifeSegment>{LifeSegment(
-                                          0, circuit.num_instructions)}),
+                                          0, 0, circuit.num_instructions)}),
       measurement_to_life_cycle(circuit.num_measurements) {
+    for (uint32_t q = 0; q < circuit.num_qubits; q++) {
+        life_cycles[q][0].qubit = q;
+    }
 
     size_t current_measurement_index = 0;
     std::vector<uint8_t> fresh_start(circuit.num_qubits, 1);
@@ -54,7 +57,7 @@ LifeCycleManager::LifeCycleManager(const LossyCircuit &circuit)
                         } else {
                             life_cycles[q].back().end = circuit_index;
                             life_cycles[q].emplace_back(
-                                circuit_index, circuit.num_instructions);
+                                q, circuit_index, circuit.num_instructions);
                         }
                     }
                 }
@@ -67,18 +70,22 @@ const LifeCycle &LifeCycleManager::get_life_cycle(uint32_t qubit_index) const {
     return life_cycles[qubit_index];
 }
 
-const std::tuple<uint32_t, const LifeSegment>
-LifeCycleManager::get_life_segment_for_measurement(
+const LifeSegment LifeCycleManager::get_life_segment_for_measurement(
     size_t measurement_index) const {
     const auto &[qubit_index, life_cycle_index] =
         measurement_to_life_cycle[measurement_index];
 
-    return std::make_tuple(qubit_index,
-                           life_cycles[qubit_index][life_cycle_index]);
+    return life_cycles[qubit_index][life_cycle_index];
+}
+
+bool LifeSegment::operator==(const LifeSegment &other) const {
+    return start == other.start && end == other.end &&
+           loss_locations == other.loss_locations;
 }
 
 const std::string LifeSegment::str() const {
-    std::string result = "LifeSegment(start=" + std::to_string(start) +
+    std::string result = "LifeSegment(qubit=" + std::to_string(qubit) +
+                         ", start=" + std::to_string(start) +
                          ", end=" + std::to_string(end) + ", loss_locations=[";
     for (size_t i = 0; i < loss_locations.size(); i++) {
         result += std::to_string(loss_locations[i]);

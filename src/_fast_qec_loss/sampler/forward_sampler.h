@@ -1,8 +1,8 @@
 #pragma once
 
+#include "../utils.h"
 #include "sampler.h"
 #include "stim/circuit/circuit.h"
-#include "../utils.h"
 #include <tuple>
 
 namespace qec_loss {
@@ -22,6 +22,10 @@ class ForwardSampler : public Sampler {
     ForwardSampler(const LossyCircuit &circuit,
                    std::optional<uint64_t> seed = std::nullopt);
 
-    SampleBatch sample(size_t num_samples) override;
+    SampleBatch sample(size_t num_samples, bool reroute_observables = false,
+                       bool optimize_retoute = false) override;
+
+    std::tuple<py::array_t<uint8_t>, std::vector<LossPattern>>
+    sample_measurements(size_t num_samples) override;
 };
 } // namespace qec_loss

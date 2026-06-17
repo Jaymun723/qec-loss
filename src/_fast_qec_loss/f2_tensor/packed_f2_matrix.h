@@ -89,6 +89,8 @@ class PackedF2Matrix {
     PackedF2Matrix kernel() const;
     PackedF2Matrix solve(const PackedF2Matrix &b) const;
 
+    std::string str() const;
+
   private:
     size_t rows_;
     size_t cols_;

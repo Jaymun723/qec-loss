@@ -30,3 +30,13 @@ def test_monaka_builder(example_circuit, tmpdir):
         )
         + "\n"
     )
+
+
+def test_decode_batch(example_circuit, tmpdir):
+    builder = fast_qec_loss.MonakaBuilder(example_circuit, tmpdir)
+    sampler = fast_qec_loss.ForwardSampler(example_circuit, seed=42)
+    batch = sampler.sample(10)
+
+    decoded = builder.decode_batch(batch)
+    assert decoded.shape == (10,)
+    assert decoded.dtype == "uint8"

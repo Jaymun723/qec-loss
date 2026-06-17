@@ -30,6 +30,7 @@ void pybind_circuit(py::module &m) {
                 return py::module_::import("stim").attr("Circuit")(
                     c.nominal_circuit.str());
             })
+        .def_readonly("rerouter", &qec_loss::LossyCircuit::rerouter)
         .def_readonly("num_qubits", &qec_loss::LossyCircuit::num_qubits)
         .def_readonly("num_measurements",
                       &qec_loss::LossyCircuit::num_measurements)

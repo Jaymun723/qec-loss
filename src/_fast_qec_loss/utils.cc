@@ -1,9 +1,22 @@
 #include "utils.h"
 
+#include <algorithm>
 #include <iterator>
 #include <sstream>
 
 namespace qec_loss {
+
+std::string to_base36(uint64_t value) {
+    if (value == 0) return "0";
+    static const char chars[] = "0123456789abcdefghijklmnopqrstuvwxyz";
+    std::string result;
+    while (value > 0) {
+        result += chars[value % 36];
+        value /= 36;
+    }
+    std::reverse(result.begin(), result.end());
+    return result;
+}
 
 InstructionCategory
 categorize_instruction(const stim::CircuitInstruction &instruction) {

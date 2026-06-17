@@ -70,15 +70,17 @@ combine_circuits_into_dem(const std::vector<stim::Circuit> &circuits,
     }
 
     std::map<std::vector<stim::DemTarget>, std::vector<double>> global_errors;
-    std::map<std::vector<stim::DemTarget>, std::string> global_tags;
-    std::map<stim::DemTarget, std::pair<std::vector<double>, std::string>>
-        global_detectors;
-    std::map<stim::DemTarget, std::string> global_observables;
+    // std::map<std::vector<stim::DemTarget>, std::string> global_tags;
+    // std::map<stim::DemTarget, std::pair<std::vector<double>, std::string>>
+    //     global_detectors;
+    // std::map<stim::DemTarget, std::string> global_observables;
 
     for (size_t i = 0; i < circuits.size(); i++) {
         const auto &circuit = circuits[i];
         double weight = weights[i];
 
+        std::cout << "Processing circuit " << i << std::endl
+                  << circuit.str() << std::endl;
         stim::DetectorErrorModel flat_dem =
             stim::ErrorAnalyzer::circuit_to_detector_error_model(
                 circuit,
@@ -86,7 +88,7 @@ combine_circuits_into_dem(const std::vector<stim::Circuit> &circuits,
                 /*fold_loops=*/true,
                 /*allow_gauge_detectors=*/true, // <- this is main thing
                 /*approximate_disjoint_errors_threshold=*/0.0,
-                /*ignore_decomposition_failures=*/false,
+                /*ignore_decomposition_failures=*/true,
                 /*block_decomposition_from_introducing_remnant_edges=*/false)
                 .flattened();
 
@@ -97,23 +99,24 @@ combine_circuits_into_dem(const std::vector<stim::Circuit> &circuits,
                 if (!op.arg_data.empty()) {
                     global_errors[targets].push_back(op.arg_data[0] * weight);
                 }
-                if (!op.tag.empty()) {
-                    global_tags[targets] = std::string(op.tag);
-                }
-            } else if (op.type == stim::DemInstructionType::DEM_DETECTOR) {
-                if (!op.target_data.empty()) {
-                    stim::DemTarget target = op.target_data[0];
-                    std::vector<double> coords(op.arg_data.begin(),
-                                               op.arg_data.end());
-                    global_detectors[target] = {coords, std::string(op.tag)};
-                }
-            } else if (op.type ==
-                       stim::DemInstructionType::DEM_LOGICAL_OBSERVABLE) {
-                if (!op.target_data.empty()) {
-                    stim::DemTarget target = op.target_data[0];
-                    global_observables[target] = std::string(op.tag);
-                }
+                // if (!op.tag.empty()) {
+                //     global_tags[targets] = std::string(op.tag);
+                // }
             }
+            // } else if (op.type == stim::DemInstructionType::DEM_DETECTOR) {
+            //     if (!op.target_data.empty()) {
+            //         stim::DemTarget target = op.target_data[0];
+            //         std::vector<double> coords(op.arg_data.begin(),
+            //                                    op.arg_data.end());
+            //         global_detectors[target] = {coords, std::string(op.tag)};
+            //     }
+            // } else if (op.type ==
+            //            stim::DemInstructionType::DEM_LOGICAL_OBSERVABLE) {
+            //     if (!op.target_data.empty()) {
+            //         stim::DemTarget target = op.target_data[0];
+            //         global_observables[target] = std::string(op.tag);
+            //     }
+            // }
         }
     }
 
@@ -121,22 +124,22 @@ combine_circuits_into_dem(const std::vector<stim::Circuit> &circuits,
     stim::DetectorErrorModel combined_dem;
 
     // Add detector declarations
-    for (const auto &pair : global_detectors) {
-        stim::DemTarget target = pair.first;
-        const auto &coords = pair.second.first;
-        const auto &tag = pair.second.second;
-        combined_dem.append_detector_instruction(
-            stim::SpanRef<const double>(coords.data(),
-                                        coords.data() + coords.size()),
-            target, tag);
-    }
+    // for (const auto &pair : global_detectors) {
+    //     stim::DemTarget target = pair.first;
+    //     const auto &coords = pair.second.first;
+    //     const auto &tag = pair.second.second;
+    //     combined_dem.append_detector_instruction(
+    //         stim::SpanRef<const double>(coords.data(),
+    //                                     coords.data() + coords.size()),
+    //         target, tag);
+    // }
 
     // 2. Add logical observable declarations
-    for (const auto &pair : global_observables) {
-        stim::DemTarget target = pair.first;
-        const auto &tag = pair.second;
-        combined_dem.append_logical_observable_instruction(target, tag);
-    }
+    // for (const auto &pair : global_observables) {
+    //     stim::DemTarget target = pair.first;
+    //     const auto &tag = pair.second;
+    //     combined_dem.append_logical_observable_instruction(target, tag);
+    // }
 
     // 3. Add error instructions
     for (const auto &pair : global_errors) {
@@ -148,28 +151,30 @@ combine_circuits_into_dem(const std::vector<stim::Circuit> &circuits,
             sum_prob += p;
         }
 
-        std::string tag = "";
-        auto tag_it = global_tags.find(targets);
-        if (tag_it != global_tags.end()) {
-            tag = tag_it->second;
-        }
+        // std::string tag = "";
+        // auto tag_it = global_tags.find(targets);
+        // if (tag_it != global_tags.end()) {
+        //     tag = tag_it->second;
+        // }
 
         combined_dem.append_error_instruction(
             sum_prob,
             stim::SpanRef<const stim::DemTarget>(
                 targets.data(), targets.data() + targets.size()),
-            tag);
+            "");
     }
 
     return combined_dem;
 }
 
-stim::DetectorErrorModel get_loss_dem(const LossyCircuit &circuit,
-                                      const uint32_t qubit,
-                                      const LifeSegment &life_segment) {
+stim::DetectorErrorModel
+get_loss_dem(const LossyCircuit &circuit,
+             const std::vector<uint32_t> &lost_data_qubits,
+             const LifeSegment &life_segment, bool optimize_rerouting) {
+    const uint32_t qubit = life_segment.qubit;
     std::vector<stim::Circuit> result(life_segment.loss_locations.size());
 
-    Rerouter rerouter(circuit.nominal_circuit);
+    size_t obs_index = 0;
 
     for (size_t i = 0; i < circuit.instructions.size(); i++) {
         const Instruction &lossy_inst = circuit.instructions[i];
@@ -188,21 +193,16 @@ stim::DetectorErrorModel get_loss_dem(const LossyCircuit &circuit,
 
             // reroutting them through the loss
             if (stim_instr.gate_type == stim::GateType::OBSERVABLE_INCLUDE) {
-                size_t obs_index = static_cast<size_t>(stim_instr.args[0]);
+                std::vector<stim::GateTarget> new_targets(
+                    circuit.rerouter.reroute(obs_index, {qubit},
+                                             optimize_rerouting));
                 for (auto &r : result) {
                     r.safe_append(stim::CircuitInstruction(
-                        stim_instr.gate_type, stim_instr.args,
-                        rerouter.reroute(obs_index, {qubit}, /*optimize=*/true),
+                        stim_instr.gate_type, stim_instr.args, new_targets,
                         stim_instr.tag));
                 }
-            } else if (i <= life_segment.start ||
-                       i >= life_segment.end) { // easy skip
-                size_t target_inst = std::get<size_t>(lossy_inst);
-                for (auto &r : result) {
-                    r.safe_append(
-                        stim_instr); // safe to append directly since these
-                                     // instructions are unaffected by loss
-                }
+
+                obs_index++;
             } else {
                 for (size_t loss_loc_idx = 0;
                      loss_loc_idx < life_segment.loss_locations.size();
@@ -265,7 +265,7 @@ stim::DetectorErrorModel get_loss_dem(const LossyCircuit &circuit,
     //             /*fold_loops=*/true,
     //             /*allow_gauge_detectors=*/true, // <- this is main thing
     //             /*approximate_disjoint_errors_threshold=*/0.0,
-    //             /*ignore_decomposition_failures=*/false,
+    //             /*ignore_decomposition_failures=*/true,
     //             /*block_decomposition_from_introducing_remnant_edges=*/false)
     //             .flattened();
     //     std::cout << "dem for loss at " << life_segment.loss_locations[i]
@@ -274,5 +274,14 @@ stim::DetectorErrorModel get_loss_dem(const LossyCircuit &circuit,
     // }
 
     return combine_circuits_into_dem(result, w);
+    // try {
+    //     return combine_circuits_into_dem(result, w);
+    // } catch (const std::runtime_error &e) {
+    //     std::cerr << "Error combining circuits into DEM: " << e.what() <<
+    //     '\n'; for (auto &r : result) {
+    //         std::cerr << "Circuit: " << r.str() << std::endl;
+    //     }
+    //     throw new std::runtime_error("Failed to combine circuits into DEM");
+    // }
 }
 } // namespace qec_loss

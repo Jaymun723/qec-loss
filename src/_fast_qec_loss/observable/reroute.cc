@@ -38,7 +38,8 @@ Rerouter::Rerouter(const stim::Circuit &circuit,
 
 std::vector<stim::GateTarget>
 Rerouter::reroute(const size_t observable_index,
-                  const std::vector<size_t> &lost_qubits, bool optimize) const {
+                  const std::vector<uint32_t> &lost_qubits,
+                  bool optimize) const {
     size_t M = circuit.count_measurements();
     size_t D = circuit.count_detectors();
 
@@ -75,6 +76,9 @@ Rerouter::reroute(const size_t observable_index,
             A(k, d) = S(d, bad_idx);
         }
     }
+
+    // std::cout << "A:\n" << A.str() << std::endl;
+    // std::cout << "b:\n" << b.str() << std::endl;
 
     PackedF2Matrix w(D, 1);
     try {

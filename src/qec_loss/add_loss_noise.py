@@ -6,6 +6,7 @@ from .utils import _1Q_GATES, _2Q_GATES, _RESET_GATES
 
 def add_loss_noise(
     circuit: stim.Circuit,
+    loss_before_2_qubit_gate: float = 0.0,
     loss_after_2_qubit_gate: float = 0.0,
     loss_after_1_qubit_gate: float = 0.0,
     loss_after_reset_gate: float = 0.0,
@@ -15,6 +16,7 @@ def add_loss_noise(
 
     Args:
         circuit: The circuit to add loss noise to.
+        loss_before_2_qubit_gate: The probability of loss noise before 2-qubit gates.
         loss_after_2_qubit_gate: The probability of loss noise after 2-qubit gates.
         loss_after_1_qubit_gate: The probability of loss noise after 1-qubit gates.
         loss_after_reset_gate: The probability of loss noise after reset gates.
@@ -25,6 +27,8 @@ def add_loss_noise(
     """
     lossy_circuit = LossyCircuit()
     for instruction in circuit.flattened():
+        if instruction.name in _2Q_GATES and loss_before_2_qubit_gate > 0.0:
+            lossy_circuit.instructions.append(LossInstruction(instruction.targets_copy(), [loss_before_2_qubit_gate]))
         lossy_circuit.instructions.append(instruction)
         if instruction.name in _1Q_GATES and loss_after_1_qubit_gate > 0.0:
             lossy_circuit.instructions.append(LossInstruction(instruction.targets_copy(), [loss_after_1_qubit_gate]))

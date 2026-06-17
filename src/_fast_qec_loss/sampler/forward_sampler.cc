@@ -97,7 +97,8 @@ void ForwardSampler::populate_shot_circuit(
     }
 }
 
-SampleBatch ForwardSampler::sample(size_t num_samples) {
+SampleBatch ForwardSampler::sample(size_t num_samples, bool reroute_observables,
+                                   bool optimize_retoute) {
     double t_batch_alloc = 0.0;
     double t_populate_circuit = 0.0;
     double t_stim_sim_init = 0.0;
@@ -161,13 +162,24 @@ SampleBatch ForwardSampler::sample(size_t num_samples) {
         // Write measurements to the output array, marking lost measurements
         // with 2.
         const auto &storage = sim.measurement_record.storage;
+
         size_t n_meas = storage.size();
         for (size_t i = 0; i < n_meas; ++i) {
             measurements_access(shot_i, i) =
                 storage[i] ? (uint8_t)1 : (uint8_t)0;
         }
+
+        std::vector<uint32_t> lost_data_qubits;
         for (size_t pos : lost_measurements) {
             measurements_access(shot_i, pos) = (uint8_t)2;
+            // check if qubit is data qubit
+            uint32_t qubit = circuit.rerouter.get_qubit_for_measurement(pos);
+            auto &data_qubits = circuit.rerouter.get_data_qubits();
+            bool is_data = std::find(data_qubits.begin(), data_qubits.end(),
+                                     qubit) != data_qubits.end();
+            if (is_data) {
+                lost_data_qubits.push_back(qubit);
+            }
         }
         auto t4 = ENABLE_PROFILING
                       ? std::chrono::high_resolution_clock::now()
@@ -186,11 +198,52 @@ SampleBatch ForwardSampler::sample(size_t num_samples) {
         }
 
         for (size_t obs_i = 0; obs_i < circuit.num_observables; ++obs_i) {
-            uint8_t obs_val = 0;
-            for (size_t idx : observable_dependencies[obs_i]) {
-                obs_val ^= storage[idx] ? (uint8_t)1 : (uint8_t)0;
+            if (reroute_observables) {
+                std::cout << "Initiating rerouting for observable " << obs_i
+                          << " in shot(" << shot_i << "): ";
+                for (size_t i = 0; i < n_meas; ++i) {
+                    std::cout << std::to_string(measurements_access(shot_i, i))
+                              << " ";
+                }
+                std::cout << std::endl << "Lost data qubits: ";
+                for (uint32_t qubit : lost_data_qubits) {
+                    std::cout << std::to_string(qubit) << " ";
+                }
+                std::cout << std::endl;
+
+                auto targets = circuit.rerouter.reroute(obs_i, lost_data_qubits,
+                                                        optimize_retoute);
+                if (targets.empty()) {
+                    std::cerr << "Warning: Observable " << obs_i
+                              << " has no valid targets after rerouting. "
+                                 "Marking as lost (2)."
+                              << std::endl;
+                    observables_access(shot_i, obs_i) = 2;
+                } else {
+                    uint8_t obs_val = 0;
+                    for (const auto &target : targets) {
+                        if (target.is_measurement_record_target()) {
+                            int idx = storage.size() + target.value();
+                            std::cout
+                                << "Observable " << obs_i
+                                << " rerouted to measurement index " << idx
+                                << " which is qubit "
+                                << circuit.rerouter.get_qubit_for_measurement(
+                                       idx)
+                                << "." << std::endl;
+
+                            obs_val ^= storage[idx] ? (uint8_t)1 : (uint8_t)0;
+                        }
+                    }
+                    observables_access(shot_i, obs_i) = obs_val;
+                }
+            } else {
+                uint8_t obs_val = 0;
+                for (size_t idx : observable_dependencies[obs_i]) {
+                    obs_val ^= storage[idx] ? (uint8_t)1 : (uint8_t)0;
+                }
+                observables_access(shot_i, obs_i) = obs_val;
             }
-            observables_access(shot_i, obs_i) = obs_val;
         }
         auto t5 = ENABLE_PROFILING
                       ? std::chrono::high_resolution_clock::now()
@@ -202,8 +255,7 @@ SampleBatch ForwardSampler::sample(size_t num_samples) {
     }
 
     if (ENABLE_PROFILING) {
-        std::printf("\n--- PROFILING RESULTS (num_samples = %zu) ---\n",
-                    num_samples);
+        std::printf("PROFILING RESULTS (num_samples = %zu):\n", num_samples);
         std::printf("Batch alloc:           %9.6f s\n", t_batch_alloc);
         std::printf("Populate shot circuit: %9.6f s\n", t_populate_circuit);
         std::printf("Stim simulator init:   %9.6f s\n", t_stim_sim_init);
@@ -211,9 +263,88 @@ SampleBatch ForwardSampler::sample(size_t num_samples) {
         std::printf("Write measurements:    %9.6f s\n", t_write_measurements);
         std::printf("Detectors/observables: %9.6f s\n",
                     t_detectors_observables);
-        std::printf("-------------------------------------------\n\n");
     }
 
     return batch;
+}
+std::tuple<py::array_t<uint8_t>, std::vector<LossPattern>>
+ForwardSampler::sample_measurements(size_t num_samples) {
+    auto t_start = ENABLE_PROFILING
+                       ? std::chrono::high_resolution_clock::now()
+                       : std::chrono::high_resolution_clock::time_point{};
+    double t_populate_circuit = 0.0;
+    double t_tableau_stim = 0.0;
+    double t_write_measurements = 0.0;
+    double t_total = 0.0;
+
+    py::array_t<uint8_t> measurements({num_samples, circuit.num_measurements});
+    auto measurements_access = measurements.mutable_unchecked<2>();
+    std::vector<LossPattern> loss_patterns;
+
+    for (size_t shot_i = 0; shot_i < num_samples; shot_i++) {
+        stim::Circuit shot_circuit;
+        std::vector<size_t> lost_measurements;
+        LossPattern loss_pattern;
+
+        auto t0 = ENABLE_PROFILING
+                      ? std::chrono::high_resolution_clock::now()
+                      : std::chrono::high_resolution_clock::time_point{};
+
+        populate_shot_circuit(shot_circuit, lost_measurements, loss_pattern);
+
+        loss_patterns.push_back(std::move(loss_pattern));
+        auto t1 = ENABLE_PROFILING
+                      ? std::chrono::high_resolution_clock::now()
+                      : std::chrono::high_resolution_clock::time_point{};
+        if (ENABLE_PROFILING) {
+            t_populate_circuit +=
+                std::chrono::duration<double>(t1 - t0).count();
+        }
+
+        // Run the shot circuit and record measurements.
+        stim::TableauSimulator<stim::MAX_BITWORD_WIDTH> sim(
+            std::mt19937_64(rng), circuit.num_qubits);
+        auto t2 = ENABLE_PROFILING
+                      ? std::chrono::high_resolution_clock::now()
+                      : std::chrono::high_resolution_clock::time_point{};
+        sim.safe_do_circuit(shot_circuit);
+        auto t3 = ENABLE_PROFILING
+                      ? std::chrono::high_resolution_clock::now()
+                      : std::chrono::high_resolution_clock::time_point{};
+        if (ENABLE_PROFILING) {
+            t_tableau_stim += std::chrono::duration<double>(t3 - t2).count();
+        }
+
+        // Write measurements to the output array, marking lost measurements
+        // with 2.
+        const auto &storage = sim.measurement_record.storage;
+        size_t n_meas = storage.size();
+        for (size_t i = 0; i < n_meas; ++i) {
+            measurements_access(shot_i, i) =
+                storage[i] ? (uint8_t)1 : (uint8_t)0;
+        }
+        for (size_t pos : lost_measurements) {
+            measurements_access(shot_i, pos) = (uint8_t)2;
+        }
+        if (ENABLE_PROFILING) {
+            auto t4 = ENABLE_PROFILING
+                          ? std::chrono::high_resolution_clock::now()
+                          : std::chrono::high_resolution_clock::time_point{};
+            t_write_measurements +=
+                std::chrono::duration<double>(t4 - t3).count();
+        }
+    }
+    if (ENABLE_PROFILING) {
+        auto t_end = std::chrono::high_resolution_clock::now();
+        t_total = std::chrono::duration<double>(t_end - t_start).count();
+    }
+    if (ENABLE_PROFILING) {
+        std::printf("PROFILING RESULTS (num_samples = %zu):\n", num_samples);
+        std::printf("Populate shot circuit: %9.6f s\n", t_populate_circuit);
+        std::printf("Stim simulator run:    %9.6f s\n", t_tableau_stim);
+        std::printf("Write measurements:    %9.6f s\n", t_write_measurements);
+        std::printf("Total time:            %9.6f s\n", t_total);
+    }
+    return std::make_tuple(std::move(measurements), std::move(loss_patterns));
 }
 } // namespace qec_loss

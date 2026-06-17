@@ -13,8 +13,7 @@ namespace qec_loss {
 
 using LossPattern = std::vector<std::tuple<size_t, std::vector<uint32_t>>>;
 
-class SampleBatch {
-  public:
+struct SampleBatch {
     py::array_t<uint8_t> measurements;
     py::array_t<uint8_t> detectors;
     py::array_t<uint8_t> observables;
@@ -38,6 +37,10 @@ class Sampler {
     Sampler(const LossyCircuit &circuit, uint64_t seed);
     virtual ~Sampler() = default;
 
-    virtual SampleBatch sample(size_t num_samples) = 0;
+    virtual SampleBatch sample(size_t num_samples,
+                               bool reroute_observables = false,
+                               bool optimize_retoute = false) = 0;
+    virtual std::tuple<py::array_t<uint8_t>, std::vector<LossPattern>>
+    sample_measurements(size_t num_samples) = 0;
 };
 } // namespace qec_loss

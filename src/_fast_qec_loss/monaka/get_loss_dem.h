@@ -38,7 +38,8 @@ stim::DetectorErrorModel
 combine_circuits_into_dem(const std::vector<stim::Circuit> &circuits,
                           const std::vector<double> weights);
 
-stim::DetectorErrorModel get_loss_dem(const LossyCircuit &circuit,
-                                      const uint32_t qubit,
-                                      const LifeSegment &life_segment);
+stim::DetectorErrorModel
+get_loss_dem(const LossyCircuit &circuit,
+             const std::vector<uint32_t> &lost_data_qubits,
+             const LifeSegment &life_segment, bool optimize_rerouting);
 } // namespace qec_loss

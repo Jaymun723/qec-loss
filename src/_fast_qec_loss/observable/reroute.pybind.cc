@@ -27,7 +27,7 @@ void pybind_reroute(py::module &m) {
         .def(
             "reroute",
             [](const Rerouter &self, size_t observable_index,
-               const std::vector<size_t> &lost_qubits, bool optimize) {
+               const std::vector<uint32_t> &lost_qubits, bool optimize) {
                 std::vector<stim::GateTarget> targets =
                     self.reroute(observable_index, lost_qubits, optimize);
                 py::list py_targets;

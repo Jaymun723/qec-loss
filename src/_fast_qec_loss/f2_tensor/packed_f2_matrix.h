@@ -91,6 +91,8 @@ class PackedF2Matrix {
 
     std::string str() const;
 
+    std::vector<std::vector<uint8_t>> to_list() const;
+
   private:
     size_t rows_;
     size_t cols_;

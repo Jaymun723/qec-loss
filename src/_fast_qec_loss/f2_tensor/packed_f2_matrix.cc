@@ -187,4 +187,15 @@ std::string PackedF2Matrix::str() const {
     return result;
 }
 
+std::vector<std::vector<uint8_t>> PackedF2Matrix::to_list() const {
+    std::vector<std::vector<uint8_t>> result(rows_,
+                                             std::vector<uint8_t>(cols_, 0));
+    for (size_t r = 0; r < rows_; ++r) {
+        for (size_t c = 0; c < cols_; ++c) {
+            result[r][c] = (*this)(r, c);
+        }
+    }
+    return result;
+}
+
 } // namespace qec_loss

@@ -15,9 +15,8 @@ struct SliceRange {
 };
 
 void pybind_f2_tensor(py::module &m) {
-    auto make_subview =
-        [](const F2Tensor &t,
-           const std::vector<SliceRange> &ranges) -> F2Tensor {
+    auto make_subview = [](const F2Tensor &t,
+                           const std::vector<SliceRange> &ranges) -> F2Tensor {
         if (ranges.size() != t.shape().size()) {
             throw std::invalid_argument(
                 "Subview ranges must match the tensor's dimensionality.");
@@ -55,50 +54,60 @@ void pybind_f2_tensor(py::module &m) {
     py::class_<F2Tensor>(m, "F2Tensor", py::buffer_protocol())
         .def(py::init<const std::vector<size_t> &>(), py::arg("shape"))
         .def(py::init([](py::buffer b) {
-            py::buffer_info info = b.request();
-            if (info.format != py::format_descriptor<uint8_t>::value &&
-                info.format != "b" && info.format != "?") {
-                throw std::invalid_argument("Buffer must be uint8 or bool type.");
-            }
+                 py::buffer_info info = b.request();
+                 if (info.format != py::format_descriptor<uint8_t>::value &&
+                     info.format != "b" && info.format != "?") {
+                     throw std::invalid_argument(
+                         "Buffer must be uint8 or bool type.");
+                 }
 
-            std::vector<size_t> shape;
-            std::vector<size_t> strides;
-            for (auto s : info.shape) {
-                shape.push_back(static_cast<size_t>(s));
-            }
-            for (auto str : info.strides) {
-                strides.push_back(static_cast<size_t>(str));
-            }
+                 std::vector<size_t> shape;
+                 std::vector<size_t> strides;
+                 for (auto s : info.shape) {
+                     shape.push_back(static_cast<size_t>(s));
+                 }
+                 for (auto str : info.strides) {
+                     strides.push_back(static_cast<size_t>(str));
+                 }
 
-            py::object parent = b;
-            std::shared_ptr<uint8_t> data(static_cast<uint8_t*>(info.ptr), [parent](uint8_t*) {
-                py::gil_scoped_acquire gil;
-            });
+                 py::object parent = b;
+                 std::shared_ptr<uint8_t> data(
+                     static_cast<uint8_t *>(info.ptr),
+                     [parent](uint8_t *) { py::gil_scoped_acquire gil; });
 
-            return F2Tensor(data, shape, strides, 0);
-        }), py::arg("buffer"))
+                 return F2Tensor(data, shape, strides, 0);
+             }),
+             py::arg("buffer"))
         .def_property_readonly("shape", &F2Tensor::shape)
         .def_property_readonly("strides", &F2Tensor::strides)
         .def_property_readonly("offset", &F2Tensor::offset)
         .def_property_readonly("T", &F2Tensor::T)
-        .def("subview", [make_subview](const F2Tensor &t, const py::list &ranges_list) {
-            std::vector<SliceRange> ranges;
-            for (auto item : ranges_list) {
-                if (py::isinstance<py::tuple>(item)) {
-                    py::tuple tup = py::cast<py::tuple>(item);
-                    if (tup.size() == 2) {
-                        ranges.push_back({py::cast<size_t>(tup[0]), py::cast<size_t>(tup[1]), 1});
-                    } else if (tup.size() == 3) {
-                        ranges.push_back({py::cast<size_t>(tup[0]), py::cast<size_t>(tup[1]), py::cast<size_t>(tup[2])});
+        .def(
+            "subview",
+            [make_subview](const F2Tensor &t, const py::list &ranges_list) {
+                std::vector<SliceRange> ranges;
+                for (auto item : ranges_list) {
+                    if (py::isinstance<py::tuple>(item)) {
+                        py::tuple tup = py::cast<py::tuple>(item);
+                        if (tup.size() == 2) {
+                            ranges.push_back({py::cast<size_t>(tup[0]),
+                                              py::cast<size_t>(tup[1]), 1});
+                        } else if (tup.size() == 3) {
+                            ranges.push_back({py::cast<size_t>(tup[0]),
+                                              py::cast<size_t>(tup[1]),
+                                              py::cast<size_t>(tup[2])});
+                        } else {
+                            throw std::invalid_argument(
+                                "Slice range tuple must be size 2 or 3");
+                        }
                     } else {
-                        throw std::invalid_argument("Slice range tuple must be size 2 or 3");
+                        throw std::invalid_argument(
+                            "Slice range must be a tuple");
                     }
-                } else {
-                    throw std::invalid_argument("Slice range must be a tuple");
                 }
-            }
-            return make_subview(t, ranges);
-        }, py::arg("ranges"))
+                return make_subview(t, ranges);
+            },
+            py::arg("ranges"))
         .def("rref", &F2Tensor::rref)
         .def("rank", &F2Tensor::rank)
         .def("kernel", &F2Tensor::kernel)
@@ -122,7 +131,8 @@ void pybind_f2_tensor(py::module &m) {
                  return py::module_::import("numpy").attr("asarray")(self);
              })
         .def("__getitem__",
-             [make_subview](const F2Tensor &t, const py::object &key) -> py::object {
+             [make_subview](const F2Tensor &t,
+                            const py::object &key) -> py::object {
                  py::tuple key_tuple;
                  if (py::isinstance<py::tuple>(key)) {
                      key_tuple = py::cast<py::tuple>(key);
@@ -159,7 +169,8 @@ void pybind_f2_tensor(py::module &m) {
                                  throw std::invalid_argument(
                                      "Only positive step sizes are supported");
                              }
-                             ranges.push_back({start, stop, static_cast<size_t>(step)});
+                             ranges.push_back(
+                                 {start, stop, static_cast<size_t>(step)});
                          } else {
                              int64_t val = py::cast<int64_t>(item);
                              if (val < 0) {
@@ -169,7 +180,9 @@ void pybind_f2_tensor(py::module &m) {
                                  static_cast<size_t>(val) >= t.shape()[i]) {
                                  throw std::out_of_range("Index out of bounds");
                              }
-                             ranges.push_back({static_cast<size_t>(val), static_cast<size_t>(val + 1), 1});
+                             ranges.push_back({static_cast<size_t>(val),
+                                               static_cast<size_t>(val + 1),
+                                               1});
                          }
                      }
                      return py::cast(make_subview(t, ranges));
@@ -192,7 +205,8 @@ void pybind_f2_tensor(py::module &m) {
              })
         .def(
             "__setitem__",
-            [make_subview](F2Tensor &t, const py::object &key, const py::object &value) {
+            [make_subview](F2Tensor &t, const py::object &key,
+                           const py::object &value) {
                 py::tuple key_tuple;
                 if (py::isinstance<py::tuple>(key)) {
                     key_tuple = py::cast<py::tuple>(key);
@@ -230,8 +244,9 @@ void pybind_f2_tensor(py::module &m) {
                                 throw std::invalid_argument(
                                     "Only positive step sizes are supported");
                             }
-                            ranges.push_back({start, stop, static_cast<size_t>(step)});
-                         } else {
+                            ranges.push_back(
+                                {start, stop, static_cast<size_t>(step)});
+                        } else {
                             int64_t val = py::cast<int64_t>(item);
                             if (val < 0) {
                                 val += t.shape()[i];
@@ -240,7 +255,8 @@ void pybind_f2_tensor(py::module &m) {
                                 static_cast<size_t>(val) >= t.shape()[i]) {
                                 throw std::out_of_range("Index out of bounds");
                             }
-                            ranges.push_back({static_cast<size_t>(val), static_cast<size_t>(val + 1), 1});
+                            ranges.push_back({static_cast<size_t>(val),
+                                              static_cast<size_t>(val + 1), 1});
                         }
                     }
                     F2Tensor sub = make_subview(t, ranges);
@@ -341,27 +357,32 @@ void pybind_f2_tensor(py::module &m) {
         .def("rank", &PackedF2Matrix::rank)
         .def("kernel", &PackedF2Matrix::kernel)
         .def("solve", &PackedF2Matrix::solve, py::arg("b"))
-        .def("xor_rows", &PackedF2Matrix::xor_rows, py::arg("dst"), py::arg("src"))
+        .def("xor_rows", &PackedF2Matrix::xor_rows, py::arg("dst"),
+             py::arg("src"))
         .def("xor_bit", &PackedF2Matrix::xor_bit, py::arg("r"), py::arg("c"))
         .def("one", &PackedF2Matrix::one, py::arg("r"), py::arg("c"))
         .def("zero", &PackedF2Matrix::zero, py::arg("r"), py::arg("c"))
         .def("__matmul__", &PackedF2Matrix::operator*)
-        .def("__getitem__", [](const PackedF2Matrix &t, py::tuple key) -> uint8_t {
-            if (key.size() != 2) {
-                throw std::invalid_argument("Key must be a 2-tuple");
-            }
-            size_t r = py::cast<size_t>(key[0]);
-            size_t c = py::cast<size_t>(key[1]);
-            return t(r, c);
-        })
-        .def("__setitem__", [](PackedF2Matrix &t, py::tuple key, uint8_t val) {
-            if (key.size() != 2) {
-                throw std::invalid_argument("Key must be a 2-tuple");
-            }
-            size_t r = py::cast<size_t>(key[0]);
-            size_t c = py::cast<size_t>(key[1]);
-            t(r, c) = val;
-        });
+        .def("__getitem__",
+             [](const PackedF2Matrix &t, py::tuple key) -> uint8_t {
+                 if (key.size() != 2) {
+                     throw std::invalid_argument("Key must be a 2-tuple");
+                 }
+                 size_t r = py::cast<size_t>(key[0]);
+                 size_t c = py::cast<size_t>(key[1]);
+                 return t(r, c);
+             })
+        .def("__setitem__",
+             [](PackedF2Matrix &t, py::tuple key, uint8_t val) {
+                 if (key.size() != 2) {
+                     throw std::invalid_argument("Key must be a 2-tuple");
+                 }
+                 size_t r = py::cast<size_t>(key[0]);
+                 size_t c = py::cast<size_t>(key[1]);
+                 t(r, c) = val;
+             })
+        .def("__str__", &PackedF2Matrix::str)
+        .def("to_list", &PackedF2Matrix::to_list);
 }
 
 } // namespace qec_loss

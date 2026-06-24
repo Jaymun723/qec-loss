@@ -1,17 +1,14 @@
 from .lossy_circuit import LossyCircuit
 from .loss_instruction import LossInstruction
 from .do_instruction import do_instruction
+from .utils import count_measurements
 import numpy as np
 import stim
 
 
 class LossGraph:
     def __init__(self, circuit: LossyCircuit, shots: int, seed: int | None = None):
-        meas_count = sum(
-            len(instr.targets_copy())
-            for instr in circuit.instructions
-            if isinstance(instr, stim.CircuitInstruction) and instr.name in {"M", "MR", "MRX", "MRY", "MRZ"}
-        )
+        meas_count = count_measurements(circuit)
         self.measurements = np.zeros((shots, meas_count), dtype=int)
         tableau = stim.TableauSimulator(seed=seed)
         self.rng = np.random.default_rng(seed)

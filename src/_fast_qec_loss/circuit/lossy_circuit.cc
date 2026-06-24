@@ -66,7 +66,8 @@ LossyCircuit::LossyCircuit(ParseResult parse_result)
       num_measurements(nominal_circuit.count_measurements()),
       num_detectors(nominal_circuit.count_detectors()),
       num_observables(nominal_circuit.count_observables()),
-      num_instructions(instructions.size()), rerouter(nominal_circuit) {}
+      num_instructions(instructions.size()),
+      rerouter(nominal_circuit.without_noise()) {}
 
 LossyCircuit
 LossyCircuit::from_file(const std::filesystem::path &circuit_path) {

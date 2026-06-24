@@ -34,7 +34,7 @@ class LossyCircuit {
     const size_t num_observables;
     const size_t num_instructions;
 
-    const Rerouter rerouter;
+    const PauliRerouter rerouter;
 
     LossyCircuit(const std::string_view circuit_str);
     static LossyCircuit from_file(const std::filesystem::path &circuit_path);

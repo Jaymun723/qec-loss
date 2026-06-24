@@ -57,6 +57,11 @@ MonakaBuilder::MonakaBuilder(const LossyCircuit &circuit,
 
 stim::DetectorErrorModel MonakaBuilder::get_nominal_dem(
     const std::vector<uint32_t> &lost_data_qubits) const {
+    std::string obs_key = get_rerouted_observables_string(lost_data_qubits);
+    if (nominal_dem_cache.count(obs_key)) {
+        return nominal_dem_cache[obs_key];
+    }
+
     stim::Circuit final_circuit;
 
     size_t obs_index = 0;
@@ -85,23 +90,43 @@ stim::DetectorErrorModel MonakaBuilder::get_nominal_dem(
             /*approximate_disjoint_errors_threshold=*/0.0,
             /*ignore_decomposition_failures=*/false,
             /*block_decomposition_from_introducing_remnant_edges=*/false);
+    
+    nominal_dem_cache[obs_key] = dem;
     return dem;
 }
 
-stim::DetectorErrorModel MonakaBuilder::get_life_segment_dem(
-    const std::vector<uint32_t> &lost_data_qubits,
-    const LifeSegment &life_segment) const {
-    return get_loss_dem(circuit, lost_data_qubits, life_segment,
-                        optimize_rerouting);
+std::string MonakaBuilder::get_rerouted_observables_string(const std::vector<uint32_t> &lost_qubits) const {
+    std::string key = "";
+    for (size_t obs_index = 0; obs_index < circuit.num_observables; obs_index++) {
+        auto targets = circuit.rerouter.reroute(obs_index, lost_qubits, optimize_rerouting);
+        for (const auto &t : targets) {
+            key += std::to_string(t.value()) + ",";
+        }
+        key += ";";
+    }
+    return key;
 }
 
 stim::DetectorErrorModel
-MonakaBuilder::get_dem_for_shot(const std::vector<uint32_t> &lost_data_qubits,
+MonakaBuilder::get_life_segment_dem(const std::vector<uint32_t> &lost_qubits,
+                                    const LifeSegment &life_segment) const {
+    std::string obs_key = get_rerouted_observables_string(lost_qubits);
+    std::string key = std::to_string(std::hash<LifeSegment>{}(life_segment)) + "_" + obs_key;
+    if (loss_dem_cache.count(key)) {
+        return loss_dem_cache[key];
+    }
+    stim::DetectorErrorModel dem = get_loss_dem(circuit, lost_qubits, life_segment, optimize_rerouting);
+    loss_dem_cache[key] = dem;
+    return dem;
+}
+
+stim::DetectorErrorModel
+MonakaBuilder::get_dem_for_shot(const std::vector<uint32_t> &lost_qubits,
                                 py::array_t<uint8_t> measurements,
                                 size_t shot_i) {
-    stim::DetectorErrorModel final_dem(get_nominal_dem(lost_data_qubits));
+    stim::DetectorErrorModel final_dem(get_nominal_dem(lost_qubits));
 
-    std::cout << "nominal dem:\n" << final_dem.str() << std::endl;
+    // std::cout << "nominal dem:\n" << final_dem.str() << std::endl;
 
     auto measurements_access = measurements.unchecked<2>();
     size_t num_measurements = measurements.shape(1);
@@ -109,9 +134,9 @@ MonakaBuilder::get_dem_for_shot(const std::vector<uint32_t> &lost_data_qubits,
         if (measurements_access(shot_i, i) == 2) {
             LifeSegment life_segment =
                 life_cycle_manager.get_life_segment_for_measurement(i);
-            std::cout << "Life segment for measurement " << i << ": "
-                      << life_segment.str() << std::endl;
-            final_dem += get_life_segment_dem(lost_data_qubits, life_segment);
+            // std::cout << "Life segment for measurement " << i << ": "
+            //           << life_segment.str() << std::endl;
+            final_dem += get_life_segment_dem(lost_qubits, life_segment);
         }
     }
     return final_dem;
@@ -132,6 +157,8 @@ py::array_t<uint8_t> MonakaBuilder::decode_batch(SampleBatch &batch) {
     auto observables_access = batch.observables.unchecked<2>();
 
     for (size_t shot_i = 0; shot_i < num_samples; shot_i++) {
+        // std::cout << "Decoding shot " << shot_i << std::endl;
+
         // 1. Identify lost qubits for this shot
         std::vector<uint32_t> lost_qubits;
         for (size_t i = 0; i < num_measurements; i++) {
@@ -139,53 +166,55 @@ py::array_t<uint8_t> MonakaBuilder::decode_batch(SampleBatch &batch) {
                 LifeSegment life_segment =
                     life_cycle_manager.get_life_segment_for_measurement(i);
                 lost_qubits.push_back(life_segment.qubit);
-                auto &data_qubits = circuit.rerouter.get_data_qubits();
-                bool is_data =
-                    std::find(data_qubits.begin(), data_qubits.end(),
-                              life_segment.qubit) != data_qubits.end();
-                bool already_present =
-                    std::find(lost_qubits.begin(), lost_qubits.end(),
-                              life_segment.qubit) != lost_qubits.end();
-                if (is_data && !already_present) {
-                    lost_qubits.push_back(life_segment.qubit);
-                }
             }
         }
+
+        // std::cout << "Lost qubits for shot " << shot_i << ":";
+        // for (auto q : lost_qubits) {
+        //     std::cout << " " << q;
+        // }
+        // std::cout << std::endl;
+
+        // 4. Construct the shot-specific DEM by combining the nominal DEM
+        // with the loss DEMs
+        stim::DetectorErrorModel shot_dem =
+            get_dem_for_shot(lost_qubits, batch.measurements, shot_i);
+
+        // std::cout << "Shot-specific DEM:\n" << shot_dem.str() <<
+        // std::endl;
+
+        // 5. Build the PyMatching decoder for this shot's DEM
+        pm::Mwpm mwpm = pm::detector_error_model_to_mwpm(
+            shot_dem, pm::NUM_DISTINCT_WEIGHTS);
+
+        // 6. Gather the detection events (triggered detectors)
+        std::vector<uint64_t> detection_events;
+        for (size_t det_i = 0; det_i < num_detectors; det_i++) {
+            if (detectors_access(shot_i, det_i) == 1) {
+                detection_events.push_back(det_i);
+            }
+        }
+
+        // 7. Run PyMatching to find the correction
+        // std::cout << "Running PyMatching for shot " << shot_i <<
+        // std::endl;
+        pm::MatchingResult res =
+            pm::decode_detection_events_for_up_to_64_observables(
+                mwpm, detection_events, /*edge_correlations=*/false);
 
         // Compute prediction for each observable in this shot
         for (size_t obs_i = 0; obs_i < num_observables; obs_i++) {
             // The observable is unroutable
-            if (observables_access(shot_i, obs_i) == 2) {
-                decoded_access(shot_i, obs_i) = 0; // <- forces a logical error
-                continue;
-            }
+            // if (observables_access(shot_i, obs_i) == 2) {
+            //     decoded_access(shot_i, obs_i) = 0; // <- forces a logical
+            //     error continue;
+            // }
 
-            std::cout << "Decoding shot " << shot_i << ", observable " << obs_i
-                      << std::endl;
+            // std::cout << "Decoding shot " << shot_i << ", observable " <<
+            // obs_i
+            //           << std::endl;
 
-            // 4. Construct the shot-specific DEM by combining the nominal DEM
-            // with the loss DEMs
-            stim::DetectorErrorModel shot_dem =
-                get_dem_for_shot(lost_qubits, batch.measurements, shot_i);
-
-            // 5. Build the PyMatching decoder for this shot's DEM
-            pm::Mwpm mwpm = pm::detector_error_model_to_mwpm(
-                shot_dem, pm::NUM_DISTINCT_WEIGHTS);
-
-            // 6. Gather the detection events (triggered detectors)
-            std::vector<uint64_t> detection_events;
-            for (size_t det_i = 0; det_i < num_detectors; det_i++) {
-                if (detectors_access(shot_i, det_i) == 1) {
-                    detection_events.push_back(det_i);
-                }
-            }
-
-            // 7. Run PyMatching to find the correction
-            pm::MatchingResult res =
-                pm::decode_detection_events_for_up_to_64_observables(
-                    mwpm, detection_events, /*edge_correlations=*/false);
-
-            uint8_t correction_val = (res.obs_mask & 1);
+            uint8_t correction_val = ((res.obs_mask >> obs_i) & 1);
 
             // 8. The predicted logical observable value is the XOR of the
             // rerouted measurement and the correction

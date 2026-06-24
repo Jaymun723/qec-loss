@@ -30,6 +30,8 @@ dev = [
     "pybind11>=2.13",
     "setuptools-scm",
     "ninja",
+    "tqdm>=4.68.3",
+    "pymatching>=2.4.0",
 ]
 
 [tool.pytest.ini_options]

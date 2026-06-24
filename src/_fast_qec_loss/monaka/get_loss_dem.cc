@@ -79,8 +79,8 @@ combine_circuits_into_dem(const std::vector<stim::Circuit> &circuits,
         const auto &circuit = circuits[i];
         double weight = weights[i];
 
-        std::cout << "Processing circuit " << i << std::endl
-                  << circuit.str() << std::endl;
+        // std::cout << "Processing circuit " << i << std::endl
+        //           << circuit.str() << std::endl;
         stim::DetectorErrorModel flat_dem =
             stim::ErrorAnalyzer::circuit_to_detector_error_model(
                 circuit,
@@ -167,10 +167,10 @@ combine_circuits_into_dem(const std::vector<stim::Circuit> &circuits,
     return combined_dem;
 }
 
-stim::DetectorErrorModel
-get_loss_dem(const LossyCircuit &circuit,
-             const std::vector<uint32_t> &lost_data_qubits,
-             const LifeSegment &life_segment, bool optimize_rerouting) {
+stim::DetectorErrorModel get_loss_dem(const LossyCircuit &circuit,
+                                      const std::vector<uint32_t> &lost_qubits,
+                                      const LifeSegment &life_segment,
+                                      bool optimize_rerouting) {
     const uint32_t qubit = life_segment.qubit;
     std::vector<stim::Circuit> result(life_segment.loss_locations.size());
 
@@ -194,7 +194,7 @@ get_loss_dem(const LossyCircuit &circuit,
             // reroutting them through the loss
             if (stim_instr.gate_type == stim::GateType::OBSERVABLE_INCLUDE) {
                 std::vector<stim::GateTarget> new_targets(
-                    circuit.rerouter.reroute(obs_index, {qubit},
+                    circuit.rerouter.reroute(obs_index, lost_qubits,
                                              optimize_rerouting));
                 for (auto &r : result) {
                     r.safe_append(stim::CircuitInstruction(

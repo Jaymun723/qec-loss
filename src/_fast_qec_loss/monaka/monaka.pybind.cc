@@ -19,22 +19,19 @@ void pybind_monaka_builder(py::module &m) {
         .def_readonly("life_cycle_manager", &MonakaBuilder::life_cycle_manager)
         .def(
             "get_dem_for_shot",
-            [](MonakaBuilder &self,
-               const std::vector<uint32_t> &lost_data_qubits,
+            [](MonakaBuilder &self, const std::vector<uint32_t> &lost_qubits,
                py::array_t<uint8_t> measurements, size_t shot_i) {
-                stim::DetectorErrorModel dem = self.get_dem_for_shot(
-                    lost_data_qubits, measurements, shot_i);
+                stim::DetectorErrorModel dem =
+                    self.get_dem_for_shot(lost_qubits, measurements, shot_i);
                 return py::module_::import("stim").attr("DetectorErrorModel")(
                     dem.str());
             },
-            py::arg("lost_data_qubits"), py::arg("measurements"),
-            py::arg("shot_i"))
+            py::arg("lost_qubits"), py::arg("measurements"), py::arg("shot_i"))
         .def("get_life_segment_dem",
-             [](MonakaBuilder &self,
-                const std::vector<uint32_t> &lost_data_qubits,
+             [](MonakaBuilder &self, const std::vector<uint32_t> &lost_qubits,
                 const LifeSegment &life_segment) {
                  stim::DetectorErrorModel dem =
-                     self.get_life_segment_dem(lost_data_qubits, life_segment);
+                     self.get_life_segment_dem(lost_qubits, life_segment);
                  //  std::cout << "get_life_segment_dem: workded" << std::endl;
                  //  std::cout << "dem.str():\n" << dem.str() << "\n";
                  //  std::cout << "life_segment:\n" << life_segment.str() <<
@@ -62,15 +59,15 @@ void pybind_monaka_builder(py::module &m) {
     m.def(
         "get_loss_dem",
         [](const LossyCircuit &circuit,
-           const std::vector<uint32_t> &lost_data_qubits,
+           const std::vector<uint32_t> &lost_qubits,
            const LifeSegment &life_segment, bool optimize_rerouting) {
             stim::DetectorErrorModel dem = get_loss_dem(
-                circuit, lost_data_qubits, life_segment, optimize_rerouting);
+                circuit, lost_qubits, life_segment, optimize_rerouting);
             return py::module_::import("stim").attr("DetectorErrorModel")(
                 dem.str());
         },
-        py::arg("circuit"), py::arg("lost_data_qubits"),
-        py::arg("life_segment"), py::arg("optimize_rerouting") = false);
+        py::arg("circuit"), py::arg("lost_qubits"), py::arg("life_segment"),
+        py::arg("optimize_rerouting") = false);
 
     m.def(
         "combine_circuits_into_dem",

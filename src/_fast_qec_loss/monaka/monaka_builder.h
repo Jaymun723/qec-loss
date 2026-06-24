@@ -25,6 +25,10 @@ class MonakaBuilder {
     const LifeCycleManager life_cycle_manager;
     bool optimize_rerouting;
 
+    std::string get_rerouted_observables_string(const std::vector<uint32_t> &lost_qubits) const;
+    mutable std::unordered_map<std::string, stim::DetectorErrorModel> nominal_dem_cache;
+    mutable std::unordered_map<std::string, stim::DetectorErrorModel> loss_dem_cache;
+
     MonakaBuilder() = delete;
 
     MonakaBuilder(const LossyCircuit &circuit,
@@ -32,14 +36,14 @@ class MonakaBuilder {
                   bool optimize_rerouting = false);
 
     stim::DetectorErrorModel
-    get_nominal_dem(const std::vector<uint32_t> &lost_data_qubits) const;
+    get_nominal_dem(const std::vector<uint32_t> &lost_qubits) const;
 
     stim::DetectorErrorModel
-    get_life_segment_dem(const std::vector<uint32_t> &lost_data_qubits,
+    get_life_segment_dem(const std::vector<uint32_t> &lost_qubits,
                          const LifeSegment &life_segment) const;
 
     stim::DetectorErrorModel
-    get_dem_for_shot(const std::vector<uint32_t> &lost_data_qubits,
+    get_dem_for_shot(const std::vector<uint32_t> &lost_qubits,
                      py::array_t<uint8_t> measurements, size_t shot_i);
 
     py::array_t<uint8_t> decode_batch(SampleBatch &batch);

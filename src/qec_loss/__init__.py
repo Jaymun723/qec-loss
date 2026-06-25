@@ -1,6 +1,6 @@
 from importlib.metadata import version
 
-# from qec_loss._fast_qec_loss import _FastQecLoss
+# from qec_loss._fast_qec_loss import
 
 __version__ = version("qec-loss")
 

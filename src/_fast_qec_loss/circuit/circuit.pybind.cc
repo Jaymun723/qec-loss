@@ -7,7 +7,9 @@
 namespace qec_loss {
 
 void pybind_circuit(py::module &m) {
-    py::class_<qec_loss::LossInstruction>(m, "LossInstruction")
+    py::class_<qec_loss::LossInstruction>(
+        m, "LossInstruction",
+        R"doc(Loss instruction for circuit definition.)doc")
         .def(py::init<std::string_view>(), py::arg("instruction_str"))
         .def(py::init<std::vector<uint32_t>, double, std::string_view>(),
              py::arg("targets"), py::arg("p"), py::arg("tag"))
@@ -18,7 +20,9 @@ void pybind_circuit(py::module &m) {
         .def_readonly("tag", &qec_loss::LossInstruction::tag)
         .def("__str__", &qec_loss::LossInstruction::str);
 
-    py::class_<qec_loss::LossyCircuit>(m, "LossyCircuit")
+    py::class_<qec_loss::LossyCircuit>(
+        m, "LossyCircuit",
+        R"doc(Lossy circuit for quantum error correction.)doc")
         .def(py::init<std::string_view>(), py::arg("circuit_str"))
         .def_static("from_file", &qec_loss::LossyCircuit::from_file,
                     py::arg("circuit_path"))

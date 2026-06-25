@@ -1,6 +1,5 @@
 import stim
-from .lossy_circuit import LossyCircuit
-from .loss_instruction import LossInstruction
+from qec_loss._fast_qec_loss import LossyCircuit, LossInstruction
 from .utils import _1Q_GATES, _2Q_GATES, _RESET_GATES
 
 

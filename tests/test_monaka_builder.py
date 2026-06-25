@@ -1,8 +1,8 @@
 from qec_loss import ForwardSampler, LossyCircuit, MonakaBuilder, SampleBatch
 
 
-def test_monaka_builder(example_circuit, tmpdir):
-    builder = MonakaBuilder(example_circuit, tmpdir)
+def test_monaka_builder(example_circuit):
+    builder = MonakaBuilder(example_circuit)
 
     assert builder.save_path.is_dir()
 
@@ -17,8 +17,8 @@ def test_monaka_builder(example_circuit, tmpdir):
     assert str(nominal_dem) == str(expected_dem)
 
 
-def test_decode_batch(example_circuit, tmpdir):
-    builder = MonakaBuilder(example_circuit, tmpdir)
+def test_decode_batch(example_circuit):
+    builder = MonakaBuilder(example_circuit)
     sampler = ForwardSampler(example_circuit, seed=42)
     batch = sampler.sample(10)
 

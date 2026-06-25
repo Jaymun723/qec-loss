@@ -25,8 +25,8 @@ def test_get_loss_dem():
     assert dem[0].args_copy()[0] == 0.5
 
 
-def test_monaka_builder_dem_helpers(example_circuit, tmpdir):
-    builder = MonakaBuilder(example_circuit, tmpdir)
+def test_monaka_builder_dem_helpers(example_circuit):
+    builder = MonakaBuilder(example_circuit)
     sampler = ForwardSampler(example_circuit, seed=0)
     batch = sampler.sample(3)
 
@@ -41,7 +41,7 @@ def test_monaka_builder_dem_helpers(example_circuit, tmpdir):
     assert isinstance(batch_dem, stim.DetectorErrorModel)
 
 
-def test_monaka_get_life_segment_dem_simple(tmpdir):
+def test_monaka_get_life_segment_dem_simple():
     circuit = LossyCircuit("""
         R 0 1
         LOSS(0.5) 0
@@ -49,15 +49,15 @@ def test_monaka_get_life_segment_dem_simple(tmpdir):
         DETECTOR rec[-1] rec[-2]
         OBSERVABLE_INCLUDE(0) rec[-2]
     """)
-    builder = MonakaBuilder(circuit, tmpdir)
+    builder = MonakaBuilder(circuit)
     segment = LifeCycleManager(circuit).get_life_segment_for_measurement(0)
     dem = builder.get_life_segment_dem([0], segment)
     assert dem[0].type == "error"
     assert dem[0].args_copy()[0] == 0.5
 
 
-def test_monaka_decode_batch_nominal_only(example_circuit, tmpdir):
-    builder = MonakaBuilder(example_circuit, tmpdir)
+def test_monaka_decode_batch_nominal_only(example_circuit):
+    builder = MonakaBuilder(example_circuit)
     batch = ForwardSampler(example_circuit, seed=1).sample(10)
     decoded = builder.decode_batch(batch, include_loss_dem=False)
     assert decoded.shape == (10, 1)

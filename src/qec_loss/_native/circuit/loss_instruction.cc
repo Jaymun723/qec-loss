@@ -54,12 +54,15 @@ LossInstruction::LossInstruction(std::string_view s) {
 
     auto p_str = s.substr(pos + 1, close_paren - pos - 1);
 
-    auto [ptr, ec] =
-        std::from_chars(p_str.data(), p_str.data() + p_str.size(), p);
-
-    if (ec != std::errc{} || ptr != p_str.data() + p_str.size()) {
-        throw std::invalid_argument("Invalid probability: " +
-                                    std::string(p_str));
+    std::string p_std_str(p_str);
+    try {
+        size_t idx = 0;
+        p = std::stod(p_std_str, &idx);
+        if (idx != p_str.size()) {
+            throw std::invalid_argument("Invalid probability: " + p_std_str);
+        }
+    } catch (...) {
+        throw std::invalid_argument("Invalid probability: " + p_std_str);
     }
 
     pos = close_paren + 1;

@@ -9,33 +9,21 @@
 namespace qec_loss {
 void pybind_monaka_builder(py::module &m) {
     py::class_<MonakaBuilder>(m, "MonakaBuilder")
-        .def(py::init<const LossyCircuit &, const std::filesystem::path &,
-                      bool>(),
-             py::arg("circuit"), py::arg("model_path"),
+        .def(py::init<const LossyCircuit &, bool>(), py::arg("circuit"),
              py::arg("optimize_rerouting") = false)
-        .def_readonly("save_path", &MonakaBuilder::save_path)
-        .def("get_nominal_dem",
-             [](MonakaBuilder &self) {
-                 stim::DetectorErrorModel dem = self.get_nominal_dem({});
-                 return py::module_::import("stim").attr("DetectorErrorModel")(
-                     dem.str());
-             })
+        .def(
+            "get_nominal_dem",
+            [](MonakaBuilder &self, std::vector<uint32_t> lost_qubits) {
+                stim::DetectorErrorModel dem =
+                    self.get_nominal_dem(lost_qubits);
+                return py::module_::import("stim").attr("DetectorErrorModel")(
+                    dem.str());
+            },
+            py::arg("lost_qubits") = std::vector<uint32_t>())
         .def("decode_batch", &MonakaBuilder::decode_batch, py::arg("batch"),
              py::arg("include_loss_dem") = true,
              py::arg("post_select_on_usable_shots") = true)
         .def_readonly("life_cycle_manager", &MonakaBuilder::life_cycle_manager)
-        .def(
-            "get_dem_for_shot",
-            [](MonakaBuilder &self, const std::vector<uint32_t> &lost_qubits,
-               py::array_t<uint8_t> measurements, size_t shot_i,
-               bool include_loss_dem) {
-                stim::DetectorErrorModel dem = self.get_dem_for_shot(
-                    lost_qubits, measurements, shot_i, include_loss_dem);
-                return py::module_::import("stim").attr("DetectorErrorModel")(
-                    dem.str());
-            },
-            py::arg("lost_qubits"), py::arg("measurements"), py::arg("shot_i"),
-            py::arg("include_loss_dem") = true)
         .def("get_dem_from_measurements",
              [](MonakaBuilder &self, py::array_t<uint8_t> measurements) {
                  stim::DetectorErrorModel dem =

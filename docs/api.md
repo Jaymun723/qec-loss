@@ -28,7 +28,7 @@ from qec_loss import ForwardSampler, LossyCircuit
 
 lossy_circuit = LossyCircuit("...")
 sampler = ForwardSampler(lossy_circuit, seed=7)
-batch = sampler.sample(10_000)
+batch = sampler.sample(10_000, reroute_observable=True)
 
 measurements = batch.measurements
 detectors = batch.detectors
@@ -42,7 +42,7 @@ loss_patterns = batch.loss_patterns
 from qec_loss import ForwardSampler, MonakaBuilder, LossyCircuit
 
 lossy_circuit = LossyCircuit("...")
-builder = MonakaBuilder(lossy_circuit, model_path="/tmp/monaka_cache")
+builder = MonakaBuilder(lossy_circuit)
 sampler = ForwardSampler(lossy_circuit, seed=7)
 batch = sampler.sample(10_000)
 

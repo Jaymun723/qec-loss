@@ -15,67 +15,17 @@
 #include <algorithm>
 
 namespace qec_loss {
-std::filesystem::path
-MonakaBuilder::get_save_path(const std::filesystem::path &model_path) const {
-    std::string circuit_str = circuit.nominal_circuit.str();
-    // hash the circuit to get a unique name for the save file
-    XXH64_hash_t hash =
-        XXH64(circuit_str.data(), circuit_str.size(), /* seed= */ 0);
-    std::filesystem::path save_path = model_path / to_base36(hash);
-    std::filesystem::create_directories(save_path);
-    return save_path;
-}
-
-// stim::DetectorErrorModel
-// MonakaBuilder::retrieve_loss_dem(const LifeSegment &life_segment) {
-//     std::filesystem::path dem_path =
-//         save_path /
-//         (to_base36(std::hash<LifeSegment>{}(life_segment)) + ".dem");
-//     if (std::filesystem::exists(dem_path)) {
-//         std::ifstream dem_file(dem_path);
-//         std::string dem_str((std::istreambuf_iterator<char>(dem_file)),
-//                             std::istreambuf_iterator<char>());
-//         return stim::DetectorErrorModel(dem_str);
-//     } else {
-//         stim::DetectorErrorModel dem =
-//             get_loss_dem(circuit, life_segment, optimize_rerouting);
-//         std::ofstream dem_file(dem_path);
-//         dem_file << "# " << life_segment.str() << "\n";
-//         dem_file << dem.str() << "\n";
-//         dem_file.close();
-//         std::cout << "Saved loss DEM for " << life_segment.str() << " to "
-//                   << dem_path << std::endl;
-//         return dem;
-//     }
-// }
 
 MonakaBuilder::MonakaBuilder(const LossyCircuit &circuit,
-                             const std::filesystem::path &model_path,
                              bool optimize_rerouting)
-    : circuit(circuit), save_path(get_save_path(model_path)),
-      life_cycle_manager(circuit), optimize_rerouting(optimize_rerouting) {}
+    : circuit(circuit), life_cycle_manager(circuit),
+      optimize_rerouting(optimize_rerouting) {}
 
-stim::DetectorErrorModel MonakaBuilder::get_nominal_dem(
-    const std::vector<uint32_t> &lost_data_qubits) const {
-    std::string obs_key = get_rerouted_observables_string(lost_data_qubits);
+stim::DetectorErrorModel
+MonakaBuilder::get_nominal_dem(const std::vector<uint32_t> &lost_qubits) const {
+    std::string obs_key = get_rerouted_observables_string(lost_qubits);
     if (nominal_dem_cache.count(obs_key)) {
         return nominal_dem_cache[obs_key];
-    }
-
-    // When there is no loss, keep the nominal circuit exactly as-is so the
-    // baseline DEM matches the standard lossless decoder semantics.
-    if (lost_data_qubits.empty()) {
-        stim::DetectorErrorModel dem =
-            stim::ErrorAnalyzer::circuit_to_detector_error_model(
-                circuit.nominal_circuit,
-                /*decompose_errors=*/false,
-                /*fold_loops=*/true,
-                /*allow_gauge_detectors=*/false,
-                /*approximate_disjoint_errors_threshold=*/0.0,
-                /*ignore_decomposition_failures=*/true,
-                /*block_decomposition_from_introducing_remnant_edges=*/false);
-        nominal_dem_cache[obs_key] = dem;
-        return dem;
     }
 
     stim::Circuit final_circuit;
@@ -85,7 +35,7 @@ stim::DetectorErrorModel MonakaBuilder::get_nominal_dem(
     for (const auto &instr : circuit.nominal_circuit.operations) {
         if (instr.gate_type == stim::GateType::OBSERVABLE_INCLUDE) {
             std::vector<stim::GateTarget> new_targets =
-                circuit.rerouter.reroute(obs_index, lost_data_qubits,
+                circuit.rerouter.reroute(obs_index, lost_qubits,
                                          optimize_rerouting);
             obs_index++;
             final_circuit.safe_append(
@@ -100,7 +50,7 @@ stim::DetectorErrorModel MonakaBuilder::get_nominal_dem(
     stim::DetectorErrorModel dem =
         stim::ErrorAnalyzer::circuit_to_detector_error_model(
             final_circuit,
-            /*decompose_errors=*/true,
+            /*decompose_errors=*/false,
             /*fold_loops=*/true,
             /*allow_gauge_detectors=*/true,
             /*approximate_disjoint_errors_threshold=*/0.0,
@@ -139,31 +89,6 @@ MonakaBuilder::get_life_segment_dem(const std::vector<uint32_t> &lost_qubits,
         get_loss_dem(circuit, lost_qubits, life_segment, optimize_rerouting);
     loss_dem_cache[key] = dem;
     return dem;
-}
-
-stim::DetectorErrorModel
-MonakaBuilder::get_dem_for_shot(const std::vector<uint32_t> &lost_qubits,
-                                py::array_t<uint8_t> measurements,
-                                size_t shot_i, bool include_loss_dem) {
-    stim::DetectorErrorModel final_dem(get_nominal_dem(lost_qubits));
-    if (!include_loss_dem) {
-        return final_dem;
-    }
-
-    // std::cout << "nominal dem:\n" << final_dem.str() << std::endl;
-
-    auto measurements_access = measurements.unchecked<2>();
-    size_t num_measurements = measurements.shape(1);
-    for (size_t i = 0; i < num_measurements; i++) {
-        if (measurements_access(shot_i, i) == 2) {
-            LifeSegment life_segment =
-                life_cycle_manager.get_life_segment_for_measurement(i);
-            // std::cout << "Life segment for measurement " << i << ": "
-            //           << life_segment.str() << std::endl;
-            final_dem += get_life_segment_dem(lost_qubits, life_segment);
-        }
-    }
-    return final_dem;
 }
 
 stim::DetectorErrorModel

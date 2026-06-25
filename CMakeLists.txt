@@ -61,20 +61,37 @@ list(FILTER STIM_SOURCES EXCLUDE REGEX "/stim/main_namespaced\\.cc$")
 list(FILTER STIM_SOURCES EXCLUDE REGEX "/stim/main\\.cc$")
 
 file(GLOB_RECURSE FAST_QEC_LOSS_SOURCES CONFIGURE_DEPENDS
-    "src/_fast_qec_loss/*.cc"
+    "src/qec_loss/_native/*.cc"
 )
 
-pybind11_add_module(_fast_qec_loss MODULE
+set(PYMATCHING_ROOT "${CMAKE_SOURCE_DIR}/extern/pymatching")
+if(NOT EXISTS "${PYMATCHING_ROOT}/src/pymatching/sparse_blossom/driver/mwpm_decoding.h")
+    message(FATAL_ERROR
+        "extern/pymatching is empty. Initialise submodules with:\n"
+        "  git submodule update --init --recursive")
+endif()
+
+file(GLOB_RECURSE PYMATCHING_SOURCES CONFIGURE_DEPENDS
+    "${PYMATCHING_ROOT}/src/pymatching/*.cc"
+)
+list(FILTER PYMATCHING_SOURCES EXCLUDE REGEX "\\.test\\.cc$")
+list(FILTER PYMATCHING_SOURCES EXCLUDE REGEX "\\.perf\\.cc$")
+list(FILTER PYMATCHING_SOURCES EXCLUDE REGEX "\\.pybind\\.cc$")
+
+pybind11_add_module(_native MODULE
     ${FAST_QEC_LOSS_SOURCES}
     ${STIM_SOURCES}
+    ${PYMATCHING_SOURCES}
 )
 
-target_include_directories(_fast_qec_loss PRIVATE
+target_include_directories(_native PRIVATE
     "${STIM_ROOT}/src"
+    "${PYMATCHING_ROOT}/src"
+    "${CMAKE_SOURCE_DIR}/extern/xxhash"
 )
 
-target_compile_definitions(_fast_qec_loss PRIVATE
-    STIM_PYBIND11_MODULE_NAME=_fast_qec_loss
+target_compile_definitions(_native PRIVATE
+    STIM_PYBIND11_MODULE_NAME=_native
 )
 
-install(TARGETS _fast_qec_loss LIBRARY DESTINATION .)
+install(TARGETS _native LIBRARY DESTINATION .)

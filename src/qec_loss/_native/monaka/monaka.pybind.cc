@@ -1,0 +1,99 @@
+#include "monaka.pybind.h"
+#include "get_loss_dem.h"
+#include "life_cycle.h"
+#include "monaka_builder.h"
+#include <optional>
+#include <pybind11/stl.h>
+#include <pybind11/stl/filesystem.h>
+
+namespace qec_loss {
+void pybind_monaka_builder(py::module &m) {
+    py::class_<MonakaBuilder>(m, "MonakaBuilder")
+        .def(py::init<const LossyCircuit &, bool>(), py::arg("circuit"),
+             py::arg("optimize_rerouting") = false)
+        .def(
+            "get_nominal_dem",
+            [](MonakaBuilder &self, std::vector<uint32_t> lost_qubits) {
+                stim::DetectorErrorModel dem =
+                    self.get_nominal_dem(lost_qubits);
+                return py::module_::import("stim").attr("DetectorErrorModel")(
+                    dem.str());
+            },
+            py::arg("lost_qubits") = std::vector<uint32_t>())
+        .def("decode_batch", &MonakaBuilder::decode_batch, py::arg("batch"),
+             py::arg("include_loss_dem") = true,
+             py::arg("post_select_on_usable_shots") = true)
+        .def_readonly("life_cycle_manager", &MonakaBuilder::life_cycle_manager)
+        .def("get_dem_from_measurements",
+             [](MonakaBuilder &self, py::array_t<uint8_t> measurements) {
+                 stim::DetectorErrorModel dem =
+                     self.get_dem_from_measurements(measurements);
+                 return py::module_::import("stim").attr("DetectorErrorModel")(
+                     dem.str());
+             })
+        .def("get_life_segment_dem",
+             [](MonakaBuilder &self, const std::vector<uint32_t> &lost_qubits,
+                const LifeSegment &life_segment) {
+                 stim::DetectorErrorModel dem =
+                     self.get_life_segment_dem(lost_qubits, life_segment);
+                 //  std::cout << "get_life_segment_dem: workded" << std::endl;
+                 //  std::cout << "dem.str():\n" << dem.str() << "\n";
+                 //  std::cout << "life_segment:\n" << life_segment.str() <<
+                 //  "\n";
+                 return py::module_::import("stim").attr("DetectorErrorModel")(
+                     dem.str());
+             });
+
+    py::class_<LifeSegment>(m, "LifeSegment")
+        .def(py::init<uint32_t, size_t, size_t>(), py::arg("qubit"),
+             py::arg("start"), py::arg("end"))
+        .def_readonly("start", &LifeSegment::start)
+        .def_readonly("end", &LifeSegment::end)
+        .def_readonly("qubit", &LifeSegment::qubit)
+        .def("__str__", &LifeSegment::str)
+        .def("__repr__", &LifeSegment::str)
+        .def_readonly("loss_locations", &LifeSegment::loss_locations);
+
+    py::class_<LifeCycleManager>(m, "LifeCycleManager")
+        .def(py::init<const LossyCircuit &>(), py::arg("circuit"))
+        .def("get_life_cycle", &LifeCycleManager::get_life_cycle)
+        .def("get_life_segment_for_measurement",
+             &LifeCycleManager::get_life_segment_for_measurement);
+
+    m.def(
+        "get_loss_dem",
+        [](const LossyCircuit &circuit,
+           const std::vector<uint32_t> &lost_qubits,
+           const LifeSegment &life_segment, bool optimize_rerouting) {
+            stim::DetectorErrorModel dem = get_loss_dem(
+                circuit, lost_qubits, life_segment, optimize_rerouting);
+            return py::module_::import("stim").attr("DetectorErrorModel")(
+                dem.str());
+        },
+        py::arg("circuit"), py::arg("lost_qubits"), py::arg("life_segment"),
+        py::arg("optimize_rerouting") = false);
+
+    m.def(
+        "combine_circuits_into_dem",
+        [](const std::vector<py::object> &py_circuits,
+           const std::optional<std::vector<double>> &weights) -> py::object {
+            std::vector<stim::Circuit> circuits;
+            for (const auto &py_c : py_circuits) {
+                circuits.push_back(
+                    stim::Circuit(py::str(py_c).cast<std::string>()));
+            }
+            std::vector<double> w;
+            if (weights.has_value()) {
+                w = weights.value();
+            } else {
+                w = std::vector<double>(circuits.size(), 1.0 / circuits.size());
+            }
+            stim::DetectorErrorModel dem =
+                combine_circuits_into_dem(circuits, w);
+            return py::module_::import("stim").attr("DetectorErrorModel")(
+                dem.str());
+        },
+        py::arg("circuits"), py::arg("weights") = py::none());
+}
+
+} // namespace qec_loss

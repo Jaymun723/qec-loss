@@ -1,5 +1,6 @@
 .venv/
 build/
 playground/
+scratch/
 
 **/__pycache__/

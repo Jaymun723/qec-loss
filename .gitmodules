@@ -1,3 +1,9 @@
 [submodule "extern/stim"]
 	path = extern/stim
 	url = https://github.com/quantumlib/Stim
+[submodule "extern/pymatching"]
+	path = extern/pymatching
+	url = https://github.com/oscarhiggott/PyMatching.git
+[submodule "extern/xxhash"]
+	path = extern/xxhash
+	url = https://github.com/Cyan4973/xxHash.git

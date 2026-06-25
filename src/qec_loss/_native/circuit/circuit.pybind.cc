@@ -1,0 +1,46 @@
+#include "circuit.pybind.h"
+#include "loss_instruction.h"
+#include "lossy_circuit.h"
+#include <pybind11/stl.h>
+#include <pybind11/stl/filesystem.h>
+
+namespace qec_loss {
+
+void pybind_circuit(py::module &m) {
+    py::class_<qec_loss::LossInstruction>(
+        m, "LossInstruction",
+        R"doc(Loss instruction for circuit definition.)doc")
+        .def(py::init<std::string_view>(), py::arg("instruction_str"))
+        .def(py::init<std::vector<uint32_t>, double, std::string_view>(),
+             py::arg("targets"), py::arg("p"), py::arg("tag"))
+        .def(py::init<std::vector<uint32_t>, double>(), py::arg("targets"),
+             py::arg("p")) // For convenience
+        .def_readonly("p", &qec_loss::LossInstruction::p)
+        .def_readonly("targets", &qec_loss::LossInstruction::targets)
+        .def_readonly("tag", &qec_loss::LossInstruction::tag)
+        .def("__str__", &qec_loss::LossInstruction::str);
+
+    py::class_<qec_loss::LossyCircuit>(
+        m, "LossyCircuit",
+        R"doc(Lossy circuit for quantum error correction.)doc")
+        .def(py::init<std::string_view>(), py::arg("circuit_str"))
+        .def_static("from_file", &qec_loss::LossyCircuit::from_file,
+                    py::arg("circuit_path"))
+        .def("to_file", &qec_loss::LossyCircuit::to_file)
+        .def("__str__", &qec_loss::LossyCircuit::str)
+        .def_property_readonly(
+            "nominal_circuit",
+            [](const qec_loss::LossyCircuit &c) -> py::object {
+                return py::module_::import("stim").attr("Circuit")(
+                    c.nominal_circuit.str());
+            })
+        .def_readonly("rerouter", &qec_loss::LossyCircuit::rerouter)
+        .def_readonly("num_qubits", &qec_loss::LossyCircuit::num_qubits)
+        .def_readonly("num_measurements",
+                      &qec_loss::LossyCircuit::num_measurements)
+        .def_readonly("num_detectors", &qec_loss::LossyCircuit::num_detectors)
+        .def_readonly("num_observables",
+                      &qec_loss::LossyCircuit::num_observables);
+}
+
+} // namespace qec_loss

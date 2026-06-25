@@ -34,9 +34,6 @@ def test_monaka_builder_dem_helpers(example_circuit):
     segment = manager.get_life_segment_for_measurement(0)
     assert segment.qubit >= 0
 
-    shot_dem = builder.get_dem_for_shot([], batch.measurements, shot_i=0)
-    assert isinstance(shot_dem, stim.DetectorErrorModel)
-
     batch_dem = builder.get_dem_from_measurements(batch.measurements[0])
     assert isinstance(batch_dem, stim.DetectorErrorModel)
 

@@ -49,3 +49,6 @@ quote-style = "double"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+[tool.setuptools_scm]
+local_scheme = "no-local-version"

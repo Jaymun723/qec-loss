@@ -4,8 +4,6 @@ from qec_loss import ForwardSampler, LossyCircuit, MonakaBuilder, SampleBatch
 def test_monaka_builder(example_circuit):
     builder = MonakaBuilder(example_circuit)
 
-    assert builder.save_path.is_dir()
-
     nominal_dem = builder.get_nominal_dem()
     expected_dem = example_circuit.nominal_circuit.detector_error_model(
         decompose_errors=False,

@@ -334,14 +334,14 @@ void pybind_f2_tensor(py::module &m) {
                 }
             })
         .def_buffer([](F2Tensor &t) -> py::buffer_info {
-            std::vector<ssize_t> byte_strides;
+            std::vector<py::ssize_t> byte_strides;
             for (auto stride : t.strides()) {
                 byte_strides.push_back(
-                    static_cast<ssize_t>(stride * sizeof(uint8_t)));
+                    static_cast<py::ssize_t>(stride * sizeof(uint8_t)));
             }
-            std::vector<ssize_t> shape;
+            std::vector<py::ssize_t> shape;
             for (auto s : t.shape()) {
-                shape.push_back(static_cast<ssize_t>(s));
+                shape.push_back(static_cast<py::ssize_t>(s));
             }
             return py::buffer_info(t.data_ptr() + t.offset(), sizeof(uint8_t),
                                    py::format_descriptor<uint8_t>::format(),

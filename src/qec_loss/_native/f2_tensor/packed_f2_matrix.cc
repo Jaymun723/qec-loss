@@ -1,5 +1,6 @@
 #include "packed_f2_matrix.h"
 #include <algorithm>
+#include <string>
 
 namespace qec_loss {
 

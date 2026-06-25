@@ -25,9 +25,12 @@ class MonakaBuilder {
     const LifeCycleManager life_cycle_manager;
     bool optimize_rerouting;
 
-    std::string get_rerouted_observables_string(const std::vector<uint32_t> &lost_qubits) const;
-    mutable std::unordered_map<std::string, stim::DetectorErrorModel> nominal_dem_cache;
-    mutable std::unordered_map<std::string, stim::DetectorErrorModel> loss_dem_cache;
+    std::string get_rerouted_observables_string(
+        const std::vector<uint32_t> &lost_qubits) const;
+    mutable std::unordered_map<std::string, stim::DetectorErrorModel>
+        nominal_dem_cache;
+    mutable std::unordered_map<std::string, stim::DetectorErrorModel>
+        loss_dem_cache;
 
     MonakaBuilder() = delete;
 
@@ -44,8 +47,14 @@ class MonakaBuilder {
 
     stim::DetectorErrorModel
     get_dem_for_shot(const std::vector<uint32_t> &lost_qubits,
-                     py::array_t<uint8_t> measurements, size_t shot_i);
+                     py::array_t<uint8_t> measurements, size_t shot_i,
+                     bool include_loss_dem = true);
 
-    py::array_t<uint8_t> decode_batch(SampleBatch &batch);
+    stim::DetectorErrorModel
+    get_dem_from_measurements(py::array_t<uint8_t> measurements);
+
+    py::array_t<uint8_t> decode_batch(SampleBatch &batch,
+                                      bool include_loss_dem = true,
+                                      bool post_select_on_usable_shots = true);
 };
 } // namespace qec_loss

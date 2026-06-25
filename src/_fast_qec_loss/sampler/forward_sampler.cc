@@ -141,9 +141,12 @@ SampleBatch ForwardSampler::sample(size_t num_samples, bool reroute_observables,
                 std::chrono::duration<double>(t1 - t0).count();
         }
 
-        // Run the shot circuit and record measurements.
         stim::TableauSimulator<stim::MAX_BITWORD_WIDTH> sim(
             std::mt19937_64(rng), circuit.num_qubits);
+
+        // Ensure different shots have different random seeds.
+        rng.discard(circuit.num_measurements);
+
         auto t2 = ENABLE_PROFILING
                       ? std::chrono::high_resolution_clock::now()
                       : std::chrono::high_resolution_clock::time_point{};
@@ -194,38 +197,34 @@ SampleBatch ForwardSampler::sample(size_t num_samples, bool reroute_observables,
 
         for (size_t obs_i = 0; obs_i < circuit.num_observables; ++obs_i) {
             if (reroute_observables) {
-//                std::cout << "Initiating rerouting for observable " << obs_i
-//                          << " in shot(" << shot_i << "): ";
-//                for (size_t i = 0; i < n_meas; ++i) {
-//                    std::cout << std::to_string(measurements_access(shot_i, i))
-//                              << " ";
-//                }
-//                std::cout << std::endl << "Lost data qubits: ";
-//                for (uint32_t qubit : lost_qubits) {
-//                    std::cout << std::to_string(qubit) << " ";
-//                }
-//                std::cout << std::endl;
-
                 auto targets = circuit.rerouter.reroute(obs_i, lost_qubits,
                                                         optimize_retoute);
                 if (targets.empty()) {
-//                    std::cerr << "Warning: Observable " << obs_i
-//                              << " has no valid targets after rerouting. "
-//                                 "Marking as lost (2)."
-//                              << std::endl;
+                    //                    std::cerr << "Warning: Observable " <<
+                    //                    obs_i
+                    //                              << " has no valid targets
+                    //                              after rerouting. "
+                    //                                 "Marking as lost (2)."
+                    //                              << std::endl;
                     observables_access(shot_i, obs_i) = 2;
                 } else {
                     uint8_t obs_val = 0;
                     for (const auto &target : targets) {
                         if (target.is_measurement_record_target()) {
                             int idx = storage.size() + target.value();
-//                            std::cout
-//                                << "Observable " << obs_i
-//                                << " rerouted to measurement index " << idx
-//                                << " which is qubit "
-//                                << circuit.rerouter.get_qubit_for_measurement(
-//                                       idx)
-//                                << "." << std::endl;
+                            //                            std::cout
+                            //                                << "Observable "
+                            //                                << obs_i
+                            //                                << " rerouted to
+                            //                                measurement index
+                            //                                " << idx
+                            //                                << " which is
+                            //                                qubit "
+                            //                                <<
+                            //                                circuit.rerouter.get_qubit_for_measurement(
+                            //                                       idx)
+                            //                                << "." <<
+                            //                                std::endl;
 
                             obs_val ^= storage[idx] ? (uint8_t)1 : (uint8_t)0;
                         }

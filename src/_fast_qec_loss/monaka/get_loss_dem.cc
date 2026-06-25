@@ -84,7 +84,7 @@ combine_circuits_into_dem(const std::vector<stim::Circuit> &circuits,
         stim::DetectorErrorModel flat_dem =
             stim::ErrorAnalyzer::circuit_to_detector_error_model(
                 circuit,
-                /*decompose_errors=*/true,
+                /*decompose_errors=*/false,
                 /*fold_loops=*/true,
                 /*allow_gauge_detectors=*/true, // <- this is main thing
                 /*approximate_disjoint_errors_threshold=*/0.0,

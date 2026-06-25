@@ -62,6 +62,22 @@ stim::DetectorErrorModel MonakaBuilder::get_nominal_dem(
         return nominal_dem_cache[obs_key];
     }
 
+    // When there is no loss, keep the nominal circuit exactly as-is so the
+    // baseline DEM matches the standard lossless decoder semantics.
+    if (lost_data_qubits.empty()) {
+        stim::DetectorErrorModel dem =
+            stim::ErrorAnalyzer::circuit_to_detector_error_model(
+                circuit.nominal_circuit,
+                /*decompose_errors=*/false,
+                /*fold_loops=*/true,
+                /*allow_gauge_detectors=*/false,
+                /*approximate_disjoint_errors_threshold=*/0.0,
+                /*ignore_decomposition_failures=*/true,
+                /*block_decomposition_from_introducing_remnant_edges=*/false);
+        nominal_dem_cache[obs_key] = dem;
+        return dem;
+    }
+
     stim::Circuit final_circuit;
 
     size_t obs_index = 0;
@@ -86,19 +102,22 @@ stim::DetectorErrorModel MonakaBuilder::get_nominal_dem(
             final_circuit,
             /*decompose_errors=*/true,
             /*fold_loops=*/true,
-            /*allow_gauge_detectors=*/false,
+            /*allow_gauge_detectors=*/true,
             /*approximate_disjoint_errors_threshold=*/0.0,
-            /*ignore_decomposition_failures=*/false,
+            /*ignore_decomposition_failures=*/true,
             /*block_decomposition_from_introducing_remnant_edges=*/false);
-    
+
     nominal_dem_cache[obs_key] = dem;
     return dem;
 }
 
-std::string MonakaBuilder::get_rerouted_observables_string(const std::vector<uint32_t> &lost_qubits) const {
+std::string MonakaBuilder::get_rerouted_observables_string(
+    const std::vector<uint32_t> &lost_qubits) const {
     std::string key = "";
-    for (size_t obs_index = 0; obs_index < circuit.num_observables; obs_index++) {
-        auto targets = circuit.rerouter.reroute(obs_index, lost_qubits, optimize_rerouting);
+    for (size_t obs_index = 0; obs_index < circuit.num_observables;
+         obs_index++) {
+        auto targets = circuit.rerouter.reroute(obs_index, lost_qubits,
+                                                optimize_rerouting);
         for (const auto &t : targets) {
             key += std::to_string(t.value()) + ",";
         }
@@ -111,11 +130,13 @@ stim::DetectorErrorModel
 MonakaBuilder::get_life_segment_dem(const std::vector<uint32_t> &lost_qubits,
                                     const LifeSegment &life_segment) const {
     std::string obs_key = get_rerouted_observables_string(lost_qubits);
-    std::string key = std::to_string(std::hash<LifeSegment>{}(life_segment)) + "_" + obs_key;
+    std::string key =
+        std::to_string(std::hash<LifeSegment>{}(life_segment)) + "_" + obs_key;
     if (loss_dem_cache.count(key)) {
         return loss_dem_cache[key];
     }
-    stim::DetectorErrorModel dem = get_loss_dem(circuit, lost_qubits, life_segment, optimize_rerouting);
+    stim::DetectorErrorModel dem =
+        get_loss_dem(circuit, lost_qubits, life_segment, optimize_rerouting);
     loss_dem_cache[key] = dem;
     return dem;
 }
@@ -123,8 +144,11 @@ MonakaBuilder::get_life_segment_dem(const std::vector<uint32_t> &lost_qubits,
 stim::DetectorErrorModel
 MonakaBuilder::get_dem_for_shot(const std::vector<uint32_t> &lost_qubits,
                                 py::array_t<uint8_t> measurements,
-                                size_t shot_i) {
+                                size_t shot_i, bool include_loss_dem) {
     stim::DetectorErrorModel final_dem(get_nominal_dem(lost_qubits));
+    if (!include_loss_dem) {
+        return final_dem;
+    }
 
     // std::cout << "nominal dem:\n" << final_dem.str() << std::endl;
 
@@ -142,7 +166,50 @@ MonakaBuilder::get_dem_for_shot(const std::vector<uint32_t> &lost_qubits,
     return final_dem;
 }
 
-py::array_t<uint8_t> MonakaBuilder::decode_batch(SampleBatch &batch) {
+stim::DetectorErrorModel
+MonakaBuilder::get_dem_from_measurements(py::array_t<uint8_t> measurements) {
+    if (measurements.ndim() != 1) {
+        throw std::runtime_error("Measurements array must be 1D");
+    }
+
+    size_t num_measurements = measurements.shape(0);
+    if (num_measurements != circuit.num_measurements) {
+        throw std::runtime_error(
+            "Number of measurements in array does not match circuit");
+    }
+
+    auto measurements_access = measurements.unchecked<1>();
+    std::vector<uint32_t> lost_qubits;
+    std::vector<LifeSegment> life_segments;
+    for (size_t i = 0; i < num_measurements; i++) {
+        if (measurements_access(i) == 2) {
+            LifeSegment life_segment =
+                life_cycle_manager.get_life_segment_for_measurement(i);
+            lost_qubits.push_back(life_segment.qubit);
+            life_segments.push_back(life_segment);
+        }
+    }
+
+    // std::cout << "Lost qubits: ";
+    // for (auto q : lost_qubits) {
+    //     std::cout << q << " ";
+    // }
+    // std::cout << std::endl;
+
+    stim::DetectorErrorModel final_dem(get_nominal_dem(lost_qubits));
+
+    // std::cout << "Nominal DEM:\n" << final_dem.str() << std::endl;
+
+    for (const auto &life_segment : life_segments) {
+        final_dem += get_life_segment_dem(lost_qubits, life_segment);
+    }
+
+    return final_dem;
+}
+
+py::array_t<uint8_t>
+MonakaBuilder::decode_batch(SampleBatch &batch, bool include_loss_dem,
+                            bool post_select_on_usable_shots) {
     size_t num_samples = batch.measurements.shape(0);
     size_t num_measurements = batch.measurements.shape(1);
     size_t num_detectors = batch.detectors.shape(1);
@@ -157,35 +224,28 @@ py::array_t<uint8_t> MonakaBuilder::decode_batch(SampleBatch &batch) {
     auto observables_access = batch.observables.unchecked<2>();
 
     for (size_t shot_i = 0; shot_i < num_samples; shot_i++) {
-        // std::cout << "Decoding shot " << shot_i << std::endl;
-
-        // 1. Identify lost qubits for this shot
         std::vector<uint32_t> lost_qubits;
+        std::vector<LifeSegment> life_segments;
         for (size_t i = 0; i < num_measurements; i++) {
             if (measurements_access(shot_i, i) == 2) {
                 LifeSegment life_segment =
                     life_cycle_manager.get_life_segment_for_measurement(i);
                 lost_qubits.push_back(life_segment.qubit);
+                life_segments.push_back(life_segment);
             }
         }
 
-        // std::cout << "Lost qubits for shot " << shot_i << ":";
-        // for (auto q : lost_qubits) {
-        //     std::cout << " " << q;
-        // }
-        // std::cout << std::endl;
+        stim::DetectorErrorModel final_dem(get_nominal_dem(lost_qubits));
 
-        // 4. Construct the shot-specific DEM by combining the nominal DEM
-        // with the loss DEMs
-        stim::DetectorErrorModel shot_dem =
-            get_dem_for_shot(lost_qubits, batch.measurements, shot_i);
-
-        // std::cout << "Shot-specific DEM:\n" << shot_dem.str() <<
-        // std::endl;
+        if (include_loss_dem) {
+            for (const auto &life_segment : life_segments) {
+                final_dem += get_life_segment_dem(lost_qubits, life_segment);
+            }
+        }
 
         // 5. Build the PyMatching decoder for this shot's DEM
         pm::Mwpm mwpm = pm::detector_error_model_to_mwpm(
-            shot_dem, pm::NUM_DISTINCT_WEIGHTS);
+            final_dem, pm::NUM_DISTINCT_WEIGHTS);
 
         // 6. Gather the detection events (triggered detectors)
         std::vector<uint64_t> detection_events;
@@ -196,30 +256,22 @@ py::array_t<uint8_t> MonakaBuilder::decode_batch(SampleBatch &batch) {
         }
 
         // 7. Run PyMatching to find the correction
-        // std::cout << "Running PyMatching for shot " << shot_i <<
-        // std::endl;
         pm::MatchingResult res =
             pm::decode_detection_events_for_up_to_64_observables(
                 mwpm, detection_events, /*edge_correlations=*/false);
 
         // Compute prediction for each observable in this shot
         for (size_t obs_i = 0; obs_i < num_observables; obs_i++) {
-            // The observable is unroutable
-            // if (observables_access(shot_i, obs_i) == 2) {
-            //     decoded_access(shot_i, obs_i) = 0; // <- forces a logical
-            //     error continue;
-            // }
-
-            // std::cout << "Decoding shot " << shot_i << ", observable " <<
-            // obs_i
-            //           << std::endl;
-
+            if (observables_access(shot_i, obs_i) == 2) {
+                // If the observable is lost, we cannot predict it
+                decoded_access(shot_i, obs_i) = 2;
+                continue;
+            }
             uint8_t correction_val = ((res.obs_mask >> obs_i) & 1);
 
             // 8. The predicted logical observable value is the XOR of the
             // rerouted measurement and the correction
-            decoded_access(shot_i, obs_i) =
-                observables_access(shot_i, obs_i) ^ correction_val;
+            decoded_access(shot_i, obs_i) = correction_val;
         }
     }
 

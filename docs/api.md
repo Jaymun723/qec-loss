@@ -34,6 +34,7 @@ exps = exp_sampler.sample(10_000)
 monaka = Monaka(lossy_circuit)
 # monaka.prebuild()
 preds = monaka_builder.decode_batch(exps)
+preds_nominal_only = monaka_builder.decode_batch(exps, include_loss_dem=False)
 
 ler = (preds != obs).mean()
 ```

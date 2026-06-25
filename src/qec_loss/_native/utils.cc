@@ -7,7 +7,8 @@
 namespace qec_loss {
 
 std::string to_base36(uint64_t value) {
-    if (value == 0) return "0";
+    if (value == 0)
+        return "0";
     static const char chars[] = "0123456789abcdefghijklmnopqrstuvwxyz";
     std::string result;
     while (value > 0) {

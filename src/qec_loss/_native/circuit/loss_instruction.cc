@@ -11,11 +11,12 @@ LossInstruction::LossInstruction(std::vector<uint32_t> targets, double p,
                                  std::string_view tag)
     : p(p),
       // Precompute the integer threshold for fast RNG comparison:
-      // Comparing a raw 64-bit random integer to p * (2^64 - 1) is mathematically
-      // equivalent to dist(rng) < p, but avoids double-precision float division.
-      threshold(static_cast<uint64_t>(p * static_cast<double>(std::numeric_limits<uint64_t>::max()))),
-      targets(std::move(targets)),
-      tag(tag) {}
+      // Comparing a raw 64-bit random integer to p * (2^64 - 1) is
+      // mathematically equivalent to dist(rng) < p, but avoids double-precision
+      // float division.
+      threshold(static_cast<uint64_t>(
+          p * static_cast<double>(std::numeric_limits<uint64_t>::max()))),
+      targets(std::move(targets)), tag(tag) {}
 
 LossInstruction::LossInstruction(std::string_view s) {
     constexpr std::string_view prefix = "LOSS";
@@ -106,7 +107,8 @@ LossInstruction::LossInstruction(std::string_view s) {
     // Precompute the integer threshold for fast RNG comparison:
     // Comparing a raw 64-bit random integer to p * (2^64 - 1) is mathematically
     // equivalent to dist(rng) < p, but avoids double-precision float division.
-    threshold = static_cast<uint64_t>(p * static_cast<double>(std::numeric_limits<uint64_t>::max()));
+    threshold = static_cast<uint64_t>(
+        p * static_cast<double>(std::numeric_limits<uint64_t>::max()));
 }
 std::string LossInstruction::str() const {
     std::stringstream s;

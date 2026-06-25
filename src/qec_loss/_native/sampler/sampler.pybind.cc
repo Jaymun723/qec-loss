@@ -34,8 +34,8 @@ void pybind_sampler(py::module &m) {
             py::init<const qec_loss::LossyCircuit &, std::optional<uint64_t>>(),
             py::arg("circuit"), py::arg("seed") = py::none())
         .def_readonly("circuit", &qec_loss::Sampler::circuit)
-        .def("sample", &qec_loss::ForwardSampler::sample, py::arg("num_samples"),
-             py::arg("reroute_observables") = false,
+        .def("sample", &qec_loss::ForwardSampler::sample,
+             py::arg("num_samples"), py::arg("reroute_observables") = false,
              py::arg("optimize_retoute") = false)
         .def("sample_measurements",
              &qec_loss::ForwardSampler::sample_measurements);

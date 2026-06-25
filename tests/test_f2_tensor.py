@@ -1,6 +1,6 @@
 import pytest
 import numpy as np
-from qec_loss._fast_qec_loss import F2Tensor, PackedF2Matrix
+from qec_loss.f2_tensor import F2Tensor, PackedF2Matrix
 
 
 def test_f2_tensor_init():
@@ -29,7 +29,7 @@ def test_f2_tensor_init():
 
 def test_f2_tensor_element_access():
     t = F2Tensor([3, 4])
-    
+
     # Write values
     t[0, 0] = 1
     t[1, 2] = 1
@@ -216,7 +216,7 @@ def test_f2_tensor_step_slicing():
     t = F2Tensor([6])
     for i in range(6):
         t[i] = i % 2
-    
+
     # Slice with step 2
     sub = t[::2]
     assert sub.shape == [3]
@@ -234,7 +234,7 @@ def test_f2_tensor_buffer_init():
     # Construct F2Tensor directly from a numpy array (zero-copy)
     arr = np.array([[1, 0, 1], [0, 1, 1]], dtype=np.uint8)
     t = F2Tensor(arr)
-    
+
     assert t.shape == [2, 3]
     assert t[0, 0] == 1
     assert t[0, 1] == 0
@@ -260,7 +260,7 @@ def test_f2_tensor_linear_algebra():
     # RREF and rank
     A_rref = A.rref()
     assert A_rref.shape == [3, 3]
-    assert A.rank() == 2 # over GF(2), row 0 + row 1 = row 2, so rank is 2
+    assert A.rank() == 2  # over GF(2), row 0 + row 1 = row 2, so rank is 2
 
     # Kernel (null space) basis
     # The kernel of A over GF(2) is span([1, 1, 1]) since:
@@ -348,9 +348,15 @@ def test_packed_f2_matrix():
     # 1 0 1
     # 0 1 1
     sys_mat = PackedF2Matrix(3, 3)
-    sys_mat[0, 0] = 1; sys_mat[0, 1] = 1; sys_mat[0, 2] = 0
-    sys_mat[1, 0] = 1; sys_mat[1, 1] = 0; sys_mat[1, 2] = 1
-    sys_mat[2, 0] = 0; sys_mat[2, 1] = 1; sys_mat[2, 2] = 1
+    sys_mat[0, 0] = 1
+    sys_mat[0, 1] = 1
+    sys_mat[0, 2] = 0
+    sys_mat[1, 0] = 1
+    sys_mat[1, 1] = 0
+    sys_mat[1, 2] = 1
+    sys_mat[2, 0] = 0
+    sys_mat[2, 1] = 1
+    sys_mat[2, 2] = 1
 
     rref_mat = sys_mat.rref()
     assert rref_mat.rows == 3 and rref_mat.cols == 3
@@ -367,10 +373,10 @@ def test_packed_f2_matrix():
     b[0, 0] = 1
     b[1, 0] = 0
     b[2, 0] = 1
-    
+
     x = sys_mat.solve(b)
     assert x.rows == 3 and x.cols == 1
-    
+
     # Check that A @ x = b
     res = sys_mat @ x
     assert res[0, 0] == b[0, 0]
@@ -380,9 +386,9 @@ def test_packed_f2_matrix():
     # Test direct XOR helpers (xor_bit and xor_rows)
     # 1. xor_bit: Toggle a bit
     t.xor_bit(0, 0)
-    assert t[0, 0] == 0 # originally 1, now toggled to 0
+    assert t[0, 0] == 0  # originally 1, now toggled to 0
     t.xor_bit(0, 0)
-    assert t[0, 0] == 1 # toggled back to 1
+    assert t[0, 0] == 1  # toggled back to 1
 
     # 2. xor_rows: XOR row 1 into row 0
     # t originally:
@@ -403,7 +409,3 @@ def test_packed_f2_matrix():
     assert t[1, 1] == 1
     t.zero(0, 0)
     assert t[0, 0] == 0
-
-
-
-

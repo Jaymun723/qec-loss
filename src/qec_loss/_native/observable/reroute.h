@@ -7,18 +7,13 @@
 namespace qec_loss {
 class Rerouter {
   protected:
-    const stim::Circuit &circuit;
-
-    size_t measurement_index = 0;
-    size_t observable_index = 0;
     std::vector<uint32_t> measurement_to_qubit;
 
-    virtual void parse(const stim::CircuitInstruction &instruction) = 0;
-
   public:
-    Rerouter(const stim::Circuit &circuit)
-        : circuit(circuit),
-          measurement_to_qubit(circuit.count_measurements(), 0) {}
+    explicit Rerouter(size_t num_measurements)
+        : measurement_to_qubit(num_measurements, 0) {}
+
+    virtual ~Rerouter() = default;
 
     virtual std::vector<stim::GateTarget>
     reroute(const size_t observable_index,
@@ -33,15 +28,20 @@ class DetsRerouter : public Rerouter {
   private:
     PackedF2Matrix S;
     PackedF2Matrix L;
-    size_t detector_index = 0;
     std::vector<uint32_t> data_qubits_;
+    size_t num_measurements_;
+    size_t num_detectors_;
 
-  protected:
-    void parse(const stim::CircuitInstruction &instruction) override;
+    static void parse_instruction(const stim::CircuitInstruction &instruction,
+                                  PackedF2Matrix &S, PackedF2Matrix &L,
+                                  std::vector<uint32_t> &measurement_to_qubit,
+                                  size_t &measurement_index,
+                                  size_t &detector_index,
+                                  size_t &observable_index);
 
   public:
-    DetsRerouter(const stim::Circuit &circuit);
-    DetsRerouter(const stim::Circuit &circuit,
+    DetsRerouter(stim::Circuit circuit);
+    DetsRerouter(stim::Circuit circuit,
                  const std::vector<uint32_t> &data_qubits);
 
     const std::vector<uint32_t> &get_data_qubits() const {
@@ -65,11 +65,11 @@ class PauliRerouter : public Rerouter {
 
     const size_t qubit_count;
 
-  protected:
-    void parse(const stim::CircuitInstruction &instruction) override;
+    void parse(const stim::CircuitInstruction &instruction,
+               size_t &measurement_index, size_t &observable_index);
 
   public:
-    PauliRerouter(const stim::Circuit &circuit);
+    PauliRerouter(stim::Circuit circuit);
 
     const std::vector<stim::PauliString<stim::MAX_BITWORD_WIDTH>> &
     get_L() const {

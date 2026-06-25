@@ -54,7 +54,6 @@ F2Tensor F2Tensor::T() const {
     return F2Tensor(data_, new_shape, new_strides, offset_);
 }
 
-
 F2Tensor F2Tensor::operator*(const F2Tensor &other) const {
     // Standard matrix multiplication is only defined for 2D tensors.
     if (shape_.size() != 2 || other.shape().size() != 2) {
@@ -212,7 +211,8 @@ F2Tensor F2Tensor::kernel() const {
 
 F2Tensor F2Tensor::solve(const F2Tensor &b) const {
     if (shape_.size() != 2) {
-        throw std::invalid_argument("Solve is only defined for a 2D system matrix.");
+        throw std::invalid_argument(
+            "Solve is only defined for a 2D system matrix.");
     }
     if (b.shape().size() != 1) {
         throw std::invalid_argument("Right-hand side b must be a 1D tensor.");
@@ -220,7 +220,8 @@ F2Tensor F2Tensor::solve(const F2Tensor &b) const {
     size_t M = shape_[0];
     size_t N = shape_[1];
     if (b.shape()[0] != M) {
-        throw std::invalid_argument("Dimension mismatch between system matrix A and vector b.");
+        throw std::invalid_argument(
+            "Dimension mismatch between system matrix A and vector b.");
     }
 
     F2Tensor aug({M, N + 1});

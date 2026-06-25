@@ -1,4 +1,4 @@
-from qec_loss._fast_qec_loss import LossInstruction
+from qec_loss import LossInstruction
 
 
 def test_loss_instruction():

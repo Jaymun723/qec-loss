@@ -1,4 +1,4 @@
-from qec_loss._fast_qec_loss import LossyCircuit
+from qec_loss import LossyCircuit
 from qec_loss.add_loss_noise import add_loss_noise
 import stim
 
@@ -17,7 +17,7 @@ def test_lossy_circuit(tmpdir):
     )
     ref_file = tmpdir / "lossy_circuit_ref.stim"
     with open(ref_file, "w") as f:
-        f.write(str(lossy_circuit) + "\n")
+        f.write(str(lossy_circuit))
 
     tmp_file = tmpdir / "lossy_circuit.stim"
     loaded_lossy_circuit = LossyCircuit.from_file(ref_file)

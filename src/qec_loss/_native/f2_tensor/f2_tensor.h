@@ -35,16 +35,13 @@ class F2Tensor {
     // O(N^3) operation: Allocates and returns a brand new contiguous tensor.
     F2Tensor operator*(const F2Tensor &other) const;
 
-    template <typename... Args>
-    F2Tensor subview(Args... ranges) const {
-        static_assert(sizeof...(ranges) > 0,
-                      "Must provide at least one range");
+    template <typename... Args> F2Tensor subview(Args... ranges) const {
+        static_assert(sizeof...(ranges) > 0, "Must provide at least one range");
         assert(sizeof...(ranges) == shape_.size() &&
                "Dimensionality mismatch in subview()");
 
         std::pair<size_t, size_t> range_array[] = {
-            std::pair<size_t, size_t>(ranges)...
-        };
+            std::pair<size_t, size_t>(ranges)...};
 
         std::vector<size_t> new_shape(shape_.size());
         size_t new_offset = offset_;

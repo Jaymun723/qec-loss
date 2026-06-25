@@ -7,7 +7,7 @@
 
 namespace py = pybind11;
 
-PYBIND11_MODULE(_fast_qec_loss, m) {
+PYBIND11_MODULE(_native, m) {
     m.doc() = "Loss sampling and Monaka style decoding for quantum error "
               "correction circuits";
     qec_loss::pybind_circuit(m);

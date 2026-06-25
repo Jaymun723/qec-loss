@@ -1,6 +1,7 @@
 import stim
 import pytest
-from qec_loss._fast_qec_loss import Rerouter
+
+from qec_loss.observable import DetsRerouter
 
 
 def test_rerouter_basic():
@@ -25,7 +26,7 @@ def test_rerouter_basic():
     """)
 
     # Data qubits are 0 and 2
-    rerouter = Rerouter(circuit, [0, 2])
+    rerouter = DetsRerouter(circuit, [0, 2])
 
     # 1. No lost qubits: should return the original observable [rec[-2]] (M 0)
     targets_no_loss = rerouter.reroute(0, [], optimize=False)
@@ -78,7 +79,7 @@ def test_rerouter_optimization():
         OBSERVABLE_INCLUDE(0) rec[-5] rec[-4] rec[-2]
     """)
 
-    rerouter = Rerouter(circuit, [0, 3, 4])
+    rerouter = DetsRerouter(circuit, [0, 3, 4])
 
     # Without optimization: we might get the particular solution (weight 2: M 0 + M 3)
     # With optimization: we must get the optimized solution (weight 1: M 4 / rec[-3])
@@ -90,7 +91,7 @@ def test_rerouter_optimization():
 def test_real_world():
     repetition = stim.Circuit.generated("repetition_code:memory", rounds=3, distance=3).flattened()
 
-    rerouter_repetition = Rerouter(repetition)
+    rerouter_repetition = DetsRerouter(repetition)
 
     # Losing qubits 0 and 4 should still allow us to reconstruct using qubit 2.
     targets_loss_0_4 = rerouter_repetition.reroute(0, [0, 4], optimize=True)
@@ -98,7 +99,7 @@ def test_real_world():
     assert targets_loss_0_4[0] == stim.target_rec(-2)  # M 2
 
     surface = stim.Circuit.generated("surface_code:rotated_memory_z", rounds=3, distance=3).flattened()
-    rerouter_surface = Rerouter(surface)
+    rerouter_surface = DetsRerouter(surface)
 
     # Losing qubit 3 and 10
     targets_no_optimized = rerouter_surface.reroute(0, [3, 10], optimize=False)

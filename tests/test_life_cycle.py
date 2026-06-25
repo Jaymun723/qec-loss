@@ -1,4 +1,12 @@
-import qec_loss._fast_qec_loss as fast_qec_loss
+from qec_loss import LifeCycleManager, LifeSegment, LossyCircuit
+
+
+def test_life_segment_str():
+    segment = LifeSegment(qubit=3, start=1, end=10)
+    text = str(segment)
+    assert "3" in text
+    assert "1" in text
+    assert "10" in text
 
 
 def test_life_cycle_manager():
@@ -20,7 +28,7 @@ def test_life_cycle_manager():
     #     DETECTOR(0, 0, 0) rec[-1] rec[-2]
     #     OBSERVABLE_INCLUDE(0) rec[-1]
     # """)
-    circuit = fast_qec_loss.LossyCircuit("""
+    circuit = LossyCircuit("""
         R 1 2
         R 0
         CX 1 0
@@ -45,7 +53,7 @@ def test_life_cycle_manager():
         OBSERVABLE_INCLUDE(0) rec[-1]
     """)
 
-    life_manager = fast_qec_loss.LifeCycleManager(circuit)
+    life_manager = LifeCycleManager(circuit)
 
     # ancilla life cycle (qubit 0)
     ancilla_life_cycle = life_manager.get_life_cycle(0)
@@ -98,7 +106,7 @@ def test_life_cycle_manager():
 
 
 def test_fresh_start():
-    circuit = fast_qec_loss.LossyCircuit("""
+    circuit = LossyCircuit("""
         R 0
         LOSS(0.5) 0 1
         R 0 1
@@ -106,7 +114,7 @@ def test_fresh_start():
         M 0 1
     """)
 
-    manager = fast_qec_loss.LifeCycleManager(circuit)
+    manager = LifeCycleManager(circuit)
 
     # qubit 0 should behave normally
     life_cycle_0 = manager.get_life_cycle(0)

@@ -7,35 +7,88 @@
 
 namespace qec_loss {
 
-DetsRerouter::DetsRerouter(const stim::Circuit &circuit)
-    : Rerouter(circuit),
+void DetsRerouter::parse_instruction(
+    const stim::CircuitInstruction &instruction, PackedF2Matrix &S,
+    PackedF2Matrix &L, std::vector<uint32_t> &measurement_to_qubit,
+    size_t &measurement_index, size_t &detector_index,
+    size_t &observable_index) {
+    InstructionCategory category = categorize_instruction(instruction);
+    if (category == InstructionCategory::MEASURE ||
+        category == InstructionCategory::MEASUREMENT_AND_RESET) {
+        for (const auto &t : instruction.targets) {
+            if (t.is_qubit_target()) {
+                measurement_to_qubit[measurement_index] = t.qubit_value();
+            }
+            measurement_index++;
+        }
+    } else if (instruction.gate_type == stim::GateType::DETECTOR) {
+        for (const auto &t : instruction.targets) {
+            if (t.is_measurement_record_target()) {
+                int32_t m = (int32_t)measurement_index + t.value();
+                if (m < 0) {
+                    throw std::invalid_argument(
+                        "Invalid DETECTOR instruction: measurement record "
+                        "target with negative lookback.");
+                }
+                S(detector_index, m) = 1;
+            }
+        }
+        detector_index++;
+    } else if (instruction.gate_type == stim::GateType::OBSERVABLE_INCLUDE) {
+        for (const auto &t : instruction.targets) {
+            if (t.is_measurement_record_target()) {
+                int32_t m = (int32_t)measurement_index + t.value();
+                if (m < 0) {
+                    throw std::invalid_argument(
+                        "Invalid OBSERVABLE_INCLUDE instruction: measurement "
+                        "record target with negative lookback.");
+                }
+                L(observable_index, m) = 1;
+            }
+        }
+        observable_index++;
+    }
+}
+
+DetsRerouter::DetsRerouter(stim::Circuit circuit)
+    : Rerouter(circuit.count_measurements()),
       S(circuit.count_detectors(), circuit.count_measurements()),
-      L(circuit.count_observables(), circuit.count_measurements()) {
+      L(circuit.count_observables(), circuit.count_measurements()),
+      num_measurements_(circuit.count_measurements()),
+      num_detectors_(circuit.count_detectors()) {
+    size_t measurement_index = 0;
+    size_t detector_index = 0;
+    size_t observable_index = 0;
     for (const auto &op : circuit.operations) {
-        parse(op);
+        parse_instruction(op, S, L, measurement_to_qubit, measurement_index,
+                          detector_index, observable_index);
         size_t delta_measurements = op.count_measurement_results();
-        if (delta_measurements > 0 &&
-            measurement_index == circuit.count_measurements()) {
+        if (delta_measurements > 0 && measurement_index == num_measurements_) {
             // last measurement processed, heuristically assume that the
             // qubits measured are the data qubits
             for (const auto &t : op.targets) {
                 if (t.is_qubit_target()) {
-                    uint32_t qubit = t.qubit_value();
-                    data_qubits_.push_back(qubit);
+                    data_qubits_.push_back(t.qubit_value());
                 }
             }
         }
     }
 }
 
-DetsRerouter::DetsRerouter(const stim::Circuit &circuit,
+DetsRerouter::DetsRerouter(stim::Circuit circuit,
                            const std::vector<uint32_t> &data_qubits)
-    : Rerouter(circuit),
+    : Rerouter(circuit.count_measurements()),
       S(circuit.count_detectors(), circuit.count_measurements()),
       L(circuit.count_observables(), circuit.count_measurements()),
-      data_qubits_(data_qubits) {
+      data_qubits_(data_qubits),
+      num_measurements_(circuit.count_measurements()),
+      num_detectors_(circuit.count_detectors()) {
+    size_t measurement_index = 0;
+    size_t detector_index = 0;
+    size_t observable_index = 0;
     for (const auto &instruction : circuit.operations) {
-        parse(instruction);
+        parse_instruction(instruction, S, L, measurement_to_qubit,
+                          measurement_index, detector_index, observable_index);
     }
 }
 
@@ -43,8 +96,8 @@ std::vector<stim::GateTarget>
 DetsRerouter::reroute(const size_t observable_index,
                       const std::vector<uint32_t> &lost_qubits,
                       bool optimize) const {
-    size_t M = circuit.count_measurements();
-    size_t D = circuit.count_detectors();
+    const size_t M = num_measurements_;
+    const size_t D = num_detectors_;
 
     std::vector<size_t> bad_measurements;
     for (size_t i = 0; i < measurement_to_qubit.size(); i++) {
@@ -61,21 +114,17 @@ DetsRerouter::reroute(const size_t observable_index,
         if (!is_data && is_lost) {
             for (size_t d = 0; d < D; d++) {
                 bool detectord_affected = false;
-                size_t meas_idx_of_qubit = 0;
                 for (size_t m = 0; m < M; m++) {
                     if (S(d, m)) {
                         uint32_t qubit_other = measurement_to_qubit[m];
 
                         if (qubit_other == qubit) {
                             detectord_affected = true;
-                            meas_idx_of_qubit = m;
                             break;
                         }
                     }
                 }
                 if (detectord_affected) {
-//                    std::cout << "Detector " << d << " is affected by qubit "
-//                              << qubit << std::endl;
                     for (size_t m = 0; m < M; m++) {
                         if (S(d, m)) {
                             uint32_t qubit_other = measurement_to_qubit[m];
@@ -84,12 +133,6 @@ DetsRerouter::reroute(const size_t observable_index,
                                 std::find(data_qubits_.begin(),
                                           data_qubits_.end(),
                                           qubit_other) != data_qubits_.end();
-
-//                            std::cout << "  And this detector affects "
-//                                         "measurement "
-//                                      << m << " of "
-//                                      << (is_other_data ? "data" : "")
-//                                      << " qubit " << qubit_other << std::endl;
 
                             if (is_other_data) {
                                 bad_measurements.push_back(m);
@@ -100,12 +143,6 @@ DetsRerouter::reroute(const size_t observable_index,
             }
         }
     }
-
-//    std::cout << "Bad measurements: ";
-    for (const auto &m : bad_measurements) {
-//        std::cout << m << "(qubit " << measurement_to_qubit[m] << ") ";
-    }
-//    std::cout << std::endl;
 
     if (bad_measurements.empty()) {
         std::vector<stim::GateTarget> targets;
@@ -128,9 +165,6 @@ DetsRerouter::reroute(const size_t observable_index,
             A(k, d) = S(d, bad_idx);
         }
     }
-
-    // std::cout << "A:\n" << A.str() << std::endl;
-    // std::cout << "b:\n" << b.str() << std::endl;
 
     PackedF2Matrix w(D, 1);
     try {
@@ -186,7 +220,6 @@ DetsRerouter::reroute(const size_t observable_index,
                 }
             }
         } else {
-            // warn that optimization was skipped due to large kernel size
             std::cerr
                 << "Warning: Optimization skipped due to large kernel size: "
                 << K_k << std::endl;
@@ -206,46 +239,8 @@ DetsRerouter::reroute(const size_t observable_index,
     return targets;
 }
 
-void DetsRerouter::parse(const stim::CircuitInstruction &instruction) {
-    InstructionCategory category = categorize_instruction(instruction);
-    if (category == InstructionCategory::MEASURE ||
-        category == InstructionCategory::MEASUREMENT_AND_RESET) {
-        for (const auto &t : instruction.targets) {
-            if (t.is_qubit_target()) {
-                measurement_to_qubit[measurement_index] = t.qubit_value();
-            }
-            measurement_index++;
-        }
-    } else if (instruction.gate_type == stim::GateType::DETECTOR) {
-        for (const auto &t : instruction.targets) {
-            if (t.is_measurement_record_target()) {
-                int32_t m = (int32_t)measurement_index + t.value();
-                if (m < 0) {
-                    throw std::invalid_argument(
-                        "Invalid DETECTOR instruction: measurement record "
-                        "target with negative lookback.");
-                }
-                S(detector_index, m) = 1;
-            }
-        }
-        detector_index++;
-    } else if (instruction.gate_type == stim::GateType::OBSERVABLE_INCLUDE) {
-        for (const auto &t : instruction.targets) {
-            if (t.is_measurement_record_target()) {
-                int32_t m = (int32_t)measurement_index + t.value();
-                if (m < 0) {
-                    throw std::invalid_argument(
-                        "Invalid OBSERVABLE_INCLUDE instruction: measurement "
-                        "record target with negative lookback.");
-                }
-                L(observable_index, m) = 1;
-            }
-        }
-        observable_index++;
-    }
-}
-
-void PauliRerouter::parse(const stim::CircuitInstruction &instr) {
+void PauliRerouter::parse(const stim::CircuitInstruction &instr,
+                          size_t &measurement_index, size_t &observable_index) {
     bool does_measure = instr.gate_type == stim::GateType::M ||
                         instr.gate_type == stim::GateType::MX ||
                         instr.gate_type == stim::GateType::MY ||
@@ -313,12 +308,15 @@ void PauliRerouter::parse(const stim::CircuitInstruction &instr) {
     }
 }
 
-PauliRerouter::PauliRerouter(const stim::Circuit &circuit)
-    : Rerouter(circuit), measurement_to_pauli(get_stabilizers(circuit)),
+PauliRerouter::PauliRerouter(stim::Circuit circuit)
+    : Rerouter(circuit.count_measurements()),
+      measurement_to_pauli(get_stabilizers(circuit)),
       meas_so_far_(circuit.count_observables(), 0),
       qubit_count(circuit.count_qubits()) {
+    size_t measurement_index = 0;
+    size_t observable_index = 0;
     for (const auto &instruction : circuit.operations) {
-        parse(instruction);
+        parse(instruction, measurement_index, observable_index);
     }
 }
 
@@ -359,32 +357,21 @@ PauliRerouter::get_S_and_L_matrices(const size_t observable_index,
         }
     }
 
-    size_t k =
-        available_measurements.size(); // number of measurements we can use to
-                                       // reroute around lost qubits
+    size_t k = available_measurements.size();
 
     PackedF2Matrix S(2 * qubit_count, k);
     for (size_t col = 0; col < k; col++) {
         size_t meas_idx = available_measurements[col];
         const auto &pauli = measurement_to_pauli[meas_idx];
-        // std::cout << "Measurement " << meas_idx << ": " << pauli.str()
-        //           << std::endl;
-        // std::cout << pauli << std::endl;
         for (size_t q = 0; q < qubit_count; q++) {
-            // S(row, q) = pauli.xs[q] ? 1 : 0;
-            // S(row, qubit_count + q) = pauli.zs[q] ? 1 : 0;
             S(q, col) = pauli.xs[q] ? 1 : 0;
             S(qubit_count + q, col) = pauli.zs[q] ? 1 : 0;
-            // S(2 * q, col) = pauli.xs[q] ? 1 : 0;
-            // S(2 * q + 1, col) = pauli.zs[q] ? 1 : 0;
         }
     }
 
     PackedF2Matrix L(2 * qubit_count, 1);
     const auto &obs = L_[observable_index];
     for (size_t q = 0; q < qubit_count; q++) {
-        // L(2 * q, 0) = obs.xs[q] ? 1 : 0;
-        // L(2 * q + 1, 0) = obs.zs[q] ? 1 : 0;
         L(q, 0) = obs.xs[q] ? 1 : 0;
         L(qubit_count + q, 0) = obs.zs[q] ? 1 : 0;
     }
@@ -395,9 +382,7 @@ PauliRerouter::get_S_and_L_matrices(const size_t observable_index,
 std::vector<int> PauliRerouter::riroute(
     const PackedF2Matrix &S, const PackedF2Matrix &L,
     const std::vector<size_t> &available_measurements) const {
-    size_t k =
-        available_measurements.size(); // number of measurements we can
-                                       // use to reroute around lost qubits
+    size_t k = available_measurements.size();
 
     PackedF2Matrix w(k, 1);
     try {
@@ -408,10 +393,6 @@ std::vector<int> PauliRerouter::riroute(
 
     for (size_t i = 0; i < k; i++) {
         if (w(i, 0)) {
-//            std::cout << "Using measurement " << available_measurements[i]
-//                      << " to reroute (qubit "
-//                      << measurement_to_qubit[available_measurements[i]] << ")"
-//                      << std::endl;
         }
     }
 
@@ -456,23 +437,15 @@ PauliRerouter::reroute(const size_t observable_index,
         }
     }
 
-    size_t k =
-        available_measurements.size(); // number of measurements we can use to
-                                       // reroute around lost qubits
+    size_t k = available_measurements.size();
 
     PackedF2Matrix S(2 * qubit_count, k);
     for (size_t col = 0; col < k; col++) {
         size_t meas_idx = available_measurements[col];
         const auto &pauli = measurement_to_pauli[meas_idx];
-        // std::cout << "Measurement " << meas_idx << ": " << pauli.str()
-        //           << std::endl;
         for (size_t q = 0; q < qubit_count; q++) {
-            // S(row, q) = pauli.xs[q] ? 1 : 0;
-            // S(row, qubit_count + q) = pauli.zs[q] ? 1 : 0;
             S(q, col) = pauli.xs[q] ? 1 : 0;
             S(qubit_count + q, col) = pauli.zs[q] ? 1 : 0;
-            // S(2 * q, col) = pauli.xs[q] ? 1 : 0;
-            // S(2 * q + 1, col) = pauli.zs[q] ? 1 : 0;
         }
     }
 
@@ -481,8 +454,6 @@ PauliRerouter::reroute(const size_t observable_index,
     for (size_t q = 0; q < qubit_count; q++) {
         L(q, 0) = obs.xs[q] ? 1 : 0;
         L(qubit_count + q, 0) = obs.zs[q] ? 1 : 0;
-        // L(2 * q, 0) = obs.xs[q] ? 1 : 0;
-        // L(2 * q + 1, 0) = obs.zs[q] ? 1 : 0;
     }
 
     PackedF2Matrix w(k, 1);

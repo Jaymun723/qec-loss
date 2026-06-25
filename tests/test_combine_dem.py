@@ -1,5 +1,5 @@
 import stim
-from qec_loss._fast_qec_loss import combine_circuits_into_dem
+from qec_loss.monaka import combine_circuits_into_dem
 
 
 def test_combine_circuits_into_dem():

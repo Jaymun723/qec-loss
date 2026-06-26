@@ -65,6 +65,5 @@ def test_logic_forward():
     for meas, loss_pattern in zip(measurements, loss_patterns):
         assert len(loss_pattern) <= 1
         if len(loss_pattern) == 1:
-            idx, qubits = loss_pattern[0]
-            assert idx == 0
-            assert (meas[qubits] == 2).all()  # Lost qubits should have measurement value 2
+            assert loss_pattern[0] != []
+            assert (meas[loss_pattern[0]] == 2).all()  # Lost qubits should have measurement value 2

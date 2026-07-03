@@ -5,6 +5,7 @@
 #include "life_cycle.h"
 #include "stim/dem/detector_error_model.h"
 #include <filesystem>
+#include <mutex>
 #include <optional>
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
@@ -22,6 +23,7 @@ class MonakaBuilder {
 
     std::string get_rerouted_observables_string(
         const std::vector<uint32_t> &lost_qubits) const;
+    mutable std::mutex cache_mutex;
     mutable std::unordered_map<std::string, stim::DetectorErrorModel>
         nominal_dem_cache;
     mutable std::unordered_map<std::string, stim::DetectorErrorModel>

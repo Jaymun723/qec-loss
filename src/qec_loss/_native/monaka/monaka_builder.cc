@@ -24,8 +24,12 @@ MonakaBuilder::MonakaBuilder(const LossyCircuit &circuit,
 stim::DetectorErrorModel
 MonakaBuilder::get_nominal_dem(const std::vector<uint32_t> &lost_qubits) const {
     std::string obs_key = get_rerouted_observables_string(lost_qubits);
-    if (nominal_dem_cache.count(obs_key)) {
-        return nominal_dem_cache[obs_key];
+    {
+        std::lock_guard<std::mutex> lock(cache_mutex);
+        auto it = nominal_dem_cache.find(obs_key);
+        if (it != nominal_dem_cache.end()) {
+            return it->second;
+        }
     }
 
     stim::Circuit final_circuit;
@@ -57,7 +61,13 @@ MonakaBuilder::get_nominal_dem(const std::vector<uint32_t> &lost_qubits) const {
             /*ignore_decomposition_failures=*/true,
             /*block_decomposition_from_introducing_remnant_edges=*/false);
 
-    nominal_dem_cache[obs_key] = dem;
+    {
+        std::lock_guard<std::mutex> lock(cache_mutex);
+        auto [it, inserted] = nominal_dem_cache.emplace(obs_key, dem);
+        if (!inserted) {
+            return it->second;
+        }
+    }
     return dem;
 }
 
@@ -82,12 +92,22 @@ MonakaBuilder::get_life_segment_dem(const std::vector<uint32_t> &lost_qubits,
     std::string obs_key = get_rerouted_observables_string(lost_qubits);
     std::string key =
         std::to_string(std::hash<LifeSegment>{}(life_segment)) + "_" + obs_key;
-    if (loss_dem_cache.count(key)) {
-        return loss_dem_cache[key];
+    {
+        std::lock_guard<std::mutex> lock(cache_mutex);
+        auto it = loss_dem_cache.find(key);
+        if (it != loss_dem_cache.end()) {
+            return it->second;
+        }
     }
     stim::DetectorErrorModel dem =
         get_loss_dem(circuit, lost_qubits, life_segment, optimize_rerouting);
-    loss_dem_cache[key] = dem;
+    {
+        std::lock_guard<std::mutex> lock(cache_mutex);
+        auto [it, inserted] = loss_dem_cache.emplace(key, dem);
+        if (!inserted) {
+            return it->second;
+        }
+    }
     return dem;
 }
 
@@ -148,55 +168,59 @@ MonakaBuilder::decode_batch(SampleBatch &batch, bool include_loss_dem,
     auto detectors_access = batch.detectors.unchecked<2>();
     auto observables_access = batch.observables.unchecked<2>();
 
-    for (size_t shot_i = 0; shot_i < num_samples; shot_i++) {
-        std::vector<uint32_t> lost_qubits;
-        std::vector<LifeSegment> life_segments;
-        for (size_t i = 0; i < num_measurements; i++) {
-            if (measurements_access(shot_i, i) == 2) {
-                LifeSegment life_segment =
-                    life_cycle_manager.get_life_segment_for_measurement(i);
-                lost_qubits.push_back(life_segment.qubit);
-                life_segments.push_back(life_segment);
+    {
+        py::gil_scoped_release release;
+        for (size_t shot_i = 0; shot_i < num_samples; shot_i++) {
+            std::vector<uint32_t> lost_qubits;
+            std::vector<LifeSegment> life_segments;
+            for (size_t i = 0; i < num_measurements; i++) {
+                if (measurements_access(shot_i, i) == 2) {
+                    LifeSegment life_segment =
+                        life_cycle_manager.get_life_segment_for_measurement(i);
+                    lost_qubits.push_back(life_segment.qubit);
+                    life_segments.push_back(life_segment);
+                }
             }
-        }
 
-        stim::DetectorErrorModel final_dem(get_nominal_dem(lost_qubits));
+            stim::DetectorErrorModel final_dem(get_nominal_dem(lost_qubits));
 
-        if (include_loss_dem) {
-            for (const auto &life_segment : life_segments) {
-                final_dem += get_life_segment_dem(lost_qubits, life_segment);
+            if (include_loss_dem) {
+                for (const auto &life_segment : life_segments) {
+                    final_dem +=
+                        get_life_segment_dem(lost_qubits, life_segment);
+                }
             }
-        }
 
-        // 5. Build the PyMatching decoder for this shot's DEM
-        pm::Mwpm mwpm = pm::detector_error_model_to_mwpm(
-            final_dem, pm::NUM_DISTINCT_WEIGHTS);
+            // 5. Build the PyMatching decoder for this shot's DEM
+            pm::Mwpm mwpm = pm::detector_error_model_to_mwpm(
+                final_dem, pm::NUM_DISTINCT_WEIGHTS);
 
-        // 6. Gather the detection events (triggered detectors)
-        std::vector<uint64_t> detection_events;
-        for (size_t det_i = 0; det_i < num_detectors; det_i++) {
-            if (detectors_access(shot_i, det_i) == 1) {
-                detection_events.push_back(det_i);
+            // 6. Gather the detection events (triggered detectors)
+            std::vector<uint64_t> detection_events;
+            for (size_t det_i = 0; det_i < num_detectors; det_i++) {
+                if (detectors_access(shot_i, det_i) == 1) {
+                    detection_events.push_back(det_i);
+                }
             }
-        }
 
-        // 7. Run PyMatching to find the correction
-        pm::MatchingResult res =
-            pm::decode_detection_events_for_up_to_64_observables(
-                mwpm, detection_events, /*edge_correlations=*/false);
+            // 7. Run PyMatching to find the correction
+            pm::MatchingResult res =
+                pm::decode_detection_events_for_up_to_64_observables(
+                    mwpm, detection_events, /*edge_correlations=*/false);
 
-        // Compute prediction for each observable in this shot
-        for (size_t obs_i = 0; obs_i < num_observables; obs_i++) {
-            if (observables_access(shot_i, obs_i) == 2) {
-                // If the observable is lost, we cannot predict it
-                decoded_access(shot_i, obs_i) = 2;
-                continue;
+            // Compute prediction for each observable in this shot
+            for (size_t obs_i = 0; obs_i < num_observables; obs_i++) {
+                if (observables_access(shot_i, obs_i) == 2) {
+                    // If the observable is lost, we cannot predict it
+                    decoded_access(shot_i, obs_i) = 2;
+                    continue;
+                }
+                uint8_t correction_val = ((res.obs_mask >> obs_i) & 1);
+
+                // 8. The predicted logical observable value is the XOR of the
+                // rerouted measurement and the correction
+                decoded_access(shot_i, obs_i) = correction_val;
             }
-            uint8_t correction_val = ((res.obs_mask >> obs_i) & 1);
-
-            // 8. The predicted logical observable value is the XOR of the
-            // rerouted measurement and the correction
-            decoded_access(shot_i, obs_i) = correction_val;
         }
     }
 

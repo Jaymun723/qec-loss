@@ -20,6 +20,17 @@ void pybind_monaka_builder(py::module &m) {
                     dem.str());
             },
             py::arg("lost_qubits") = std::vector<uint32_t>())
+        .def("get_dems_from_batch",
+             [](MonakaBuilder &self, SampleBatch &batch) {
+                 std::vector<stim::DetectorErrorModel> dems =
+                     self.get_dems_from_batch(batch);
+                 std::vector<py::object> py_dems;
+                 for (const auto &dem : dems) {
+                     py_dems.push_back(py::module_::import("stim").attr(
+                         "DetectorErrorModel")(dem.str()));
+                 }
+                 return py_dems;
+             })
         .def("decode_batch", &MonakaBuilder::decode_batch, py::arg("batch"),
              py::arg("include_loss_dem") = true,
              py::arg("post_select_on_usable_shots") = true)
@@ -59,6 +70,23 @@ void pybind_monaka_builder(py::module &m) {
         .def("get_life_cycle", &LifeCycleManager::get_life_cycle)
         .def("get_life_segment_for_measurement",
              &LifeCycleManager::get_life_segment_for_measurement);
+
+    m.def(
+        "get_loss_rewritten_circuits",
+        [](const LossyCircuit &circuit,
+           const std::vector<uint32_t> &lost_qubits,
+           const LifeSegment &life_segment, bool optimize_rerouting) {
+            std::vector<stim::Circuit> result = get_loss_rewritten_circuits(
+                circuit, lost_qubits, life_segment, optimize_rerouting);
+            std::vector<py::object> py_circuits;
+            for (const auto &c : result) {
+                py_circuits.push_back(
+                    py::module_::import("stim").attr("Circuit")(c.str()));
+            }
+            return py_circuits;
+        },
+        py::arg("circuit"), py::arg("lost_qubits"), py::arg("life_segment"),
+        py::arg("optimize_rerouting") = false);
 
     m.def(
         "get_loss_dem",

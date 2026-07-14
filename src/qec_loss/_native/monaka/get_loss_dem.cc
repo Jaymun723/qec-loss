@@ -167,10 +167,9 @@ combine_circuits_into_dem(const std::vector<stim::Circuit> &circuits,
     return combined_dem;
 }
 
-stim::DetectorErrorModel get_loss_dem(const LossyCircuit &circuit,
-                                      const std::vector<uint32_t> &lost_qubits,
-                                      const LifeSegment &life_segment,
-                                      bool optimize_rerouting) {
+std::vector<stim::Circuit> get_loss_rewritten_circuits(
+    const LossyCircuit &circuit, const std::vector<uint32_t> &lost_qubits,
+    const LifeSegment &life_segment, bool optimize_rerouting) {
     const uint32_t qubit = life_segment.qubit;
     std::vector<stim::Circuit> result(life_segment.loss_locations.size());
 
@@ -224,6 +223,16 @@ stim::DetectorErrorModel get_loss_dem(const LossyCircuit &circuit,
         }
     }
 
+    return result;
+}
+
+stim::DetectorErrorModel get_loss_dem(const LossyCircuit &circuit,
+                                      const std::vector<uint32_t> &lost_qubits,
+                                      const LifeSegment &life_segment,
+                                      bool optimize_rerouting) {
+    std::vector<stim::Circuit> result = get_loss_rewritten_circuits(
+        circuit, lost_qubits, life_segment, optimize_rerouting);
+
     std::vector<double> p(life_segment.loss_locations.size(), 0.0);
     // initialize p_i with the probabilities of the loss instructions at the
     // loss locations
@@ -253,35 +262,6 @@ stim::DetectorErrorModel get_loss_dem(const LossyCircuit &circuit,
         w[i] /= tot;
     }
 
-    // for (size_t i = 0; i < result.size(); i++) {
-    //     std::cout << "circuit for loss at " << life_segment.loss_locations[i]
-    //               << " with weight " << w[i] << ":" << std::endl;
-    //     std::cout << result[i].str() << std::endl;
-
-    //     stim::DetectorErrorModel dem =
-    //         stim::ErrorAnalyzer::circuit_to_detector_error_model(
-    //             result[i],
-    //             /*decompose_errors=*/true,
-    //             /*fold_loops=*/true,
-    //             /*allow_gauge_detectors=*/true, // <- this is main thing
-    //             /*approximate_disjoint_errors_threshold=*/0.0,
-    //             /*ignore_decomposition_failures=*/true,
-    //             /*block_decomposition_from_introducing_remnant_edges=*/false)
-    //             .flattened();
-    //     std::cout << "dem for loss at " << life_segment.loss_locations[i]
-    //               << " with weight " << w[i] << ":" << std::endl;
-    //     std::cout << dem.str() << std::endl;
-    // }
-
     return combine_circuits_into_dem(result, w);
-    // try {
-    //     return combine_circuits_into_dem(result, w);
-    // } catch (const std::runtime_error &e) {
-    //     std::cerr << "Error combining circuits into DEM: " << e.what() <<
-    //     '\n'; for (auto &r : result) {
-    //         std::cerr << "Circuit: " << r.str() << std::endl;
-    //     }
-    //     throw new std::runtime_error("Failed to combine circuits into DEM");
-    // }
 }
 } // namespace qec_loss

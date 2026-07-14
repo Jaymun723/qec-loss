@@ -4,6 +4,7 @@ from qec_loss._native import (
     MonakaBuilder,
     combine_circuits_into_dem,
     get_loss_dem,
+    get_loss_rewritten_circuits,
 )
 
 __all__ = [
@@ -12,4 +13,5 @@ __all__ = [
     "MonakaBuilder",
     "combine_circuits_into_dem",
     "get_loss_dem",
+    "get_loss_rewritten_circuits",
 ]

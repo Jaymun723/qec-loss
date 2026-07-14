@@ -43,6 +43,9 @@ class MonakaBuilder {
     stim::DetectorErrorModel
     get_dem_from_measurements(py::array_t<uint8_t> measurements);
 
+    std::vector<stim::DetectorErrorModel>
+    get_dems_from_batch(SampleBatch &batch);
+
     py::array_t<uint8_t> decode_batch(SampleBatch &batch,
                                       bool include_loss_dem = true,
                                       bool post_select_on_usable_shots = true);

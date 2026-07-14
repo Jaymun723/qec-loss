@@ -152,6 +152,44 @@ MonakaBuilder::get_dem_from_measurements(py::array_t<uint8_t> measurements) {
     return final_dem;
 }
 
+std::vector<stim::DetectorErrorModel>
+MonakaBuilder::get_dems_from_batch(SampleBatch &batch) {
+    size_t num_samples = batch.measurements.shape(0);
+    size_t num_measurements = batch.measurements.shape(1);
+
+    std::vector<stim::DetectorErrorModel> dems;
+    dems.reserve(num_samples);
+
+    auto measurements_access = batch.measurements.unchecked<2>();
+
+    {
+        py::gil_scoped_release release;
+        for (size_t shot_i = 0; shot_i < num_samples; shot_i++) {
+
+            std::vector<uint32_t> lost_qubits;
+            std::vector<LifeSegment> life_segments;
+            for (size_t i = 0; i < num_measurements; i++) {
+                if (measurements_access(shot_i, i) == 2) {
+                    LifeSegment life_segment =
+                        life_cycle_manager.get_life_segment_for_measurement(i);
+                    lost_qubits.push_back(life_segment.qubit);
+                    life_segments.push_back(life_segment);
+                }
+            }
+
+            stim::DetectorErrorModel final_dem(get_nominal_dem(lost_qubits));
+
+            for (const auto &life_segment : life_segments) {
+                final_dem += get_life_segment_dem(lost_qubits, life_segment);
+            }
+
+            dems.push_back(final_dem);
+        }
+    }
+
+    return dems;
+}
+
 py::array_t<uint8_t>
 MonakaBuilder::decode_batch(SampleBatch &batch, bool include_loss_dem,
                             bool post_select_on_usable_shots) {

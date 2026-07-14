@@ -51,7 +51,7 @@ void pybind_f2_tensor(py::module &m) {
         return F2Tensor(t.data_, new_shape, new_strides, new_offset);
     };
 
-    py::class_<F2Tensor>(m, "F2Tensor", py::buffer_protocol())
+    py::class_<F2Tensor>(m, "F2Tensor", py::buffer_protocol(), R"doc(A tensor of elements in GF(2).)doc")
         .def(py::init<const std::vector<size_t> &>(), py::arg("shape"))
         .def(py::init([](py::buffer b) {
                  py::buffer_info info = b.request();
@@ -78,10 +78,10 @@ void pybind_f2_tensor(py::module &m) {
                  return F2Tensor(data, shape, strides, 0);
              }),
              py::arg("buffer"))
-        .def_property_readonly("shape", &F2Tensor::shape)
-        .def_property_readonly("strides", &F2Tensor::strides)
-        .def_property_readonly("offset", &F2Tensor::offset)
-        .def_property_readonly("T", &F2Tensor::T)
+        .def_property_readonly("shape", &F2Tensor::shape, R"doc(The shape of the tensor.)doc")
+        .def_property_readonly("strides", &F2Tensor::strides, R"doc(The strides of the tensor.)doc")
+        .def_property_readonly("offset", &F2Tensor::offset, R"doc(The data offset.)doc")
+        .def_property_readonly("T", &F2Tensor::T, R"doc(The transpose of the tensor (only valid for 2D tensors).)doc")
         .def(
             "subview",
             [make_subview](const F2Tensor &t, const py::list &ranges_list) {
@@ -107,11 +107,11 @@ void pybind_f2_tensor(py::module &m) {
                 }
                 return make_subview(t, ranges);
             },
-            py::arg("ranges"))
-        .def("rref", &F2Tensor::rref)
-        .def("rank", &F2Tensor::rank)
-        .def("kernel", &F2Tensor::kernel)
-        .def("solve", &F2Tensor::solve, py::arg("b"))
+            py::arg("ranges"), R"doc(Get a subview of the tensor.)doc")
+        .def("rref", &F2Tensor::rref, R"doc(Compute the reduced row echelon form.)doc")
+        .def("rank", &F2Tensor::rank, R"doc(Compute the rank of the tensor (as a matrix).)doc")
+        .def("kernel", &F2Tensor::kernel, R"doc(Compute the kernel of the tensor (as a matrix).)doc")
+        .def("solve", &F2Tensor::solve, py::arg("b"), R"doc(Solve the linear system Ax=b.)doc")
         .def("__matmul__", &F2Tensor::operator*)
         .def("__str__",
              [](const F2Tensor &t) {
@@ -129,7 +129,7 @@ void pybind_f2_tensor(py::module &m) {
         .def("to_numpy",
              [](py::object self) {
                  return py::module_::import("numpy").attr("asarray")(self);
-             })
+             }, R"doc(Convert the tensor to a NumPy array.)doc")
         .def("__getitem__",
              [make_subview](const F2Tensor &t,
                             const py::object &key) -> py::object {
@@ -348,20 +348,20 @@ void pybind_f2_tensor(py::module &m) {
                                    t.shape().size(), shape, byte_strides);
         });
 
-    py::class_<PackedF2Matrix>(m, "PackedF2Matrix")
-        .def(py::init<size_t, size_t>(), py::arg("rows"), py::arg("cols"))
-        .def_property_readonly("rows", &PackedF2Matrix::rows)
-        .def_property_readonly("cols", &PackedF2Matrix::cols)
-        .def_property_readonly("T", &PackedF2Matrix::T)
-        .def("rref", &PackedF2Matrix::rref)
-        .def("rank", &PackedF2Matrix::rank)
-        .def("kernel", &PackedF2Matrix::kernel)
-        .def("solve", &PackedF2Matrix::solve, py::arg("b"))
+    py::class_<PackedF2Matrix>(m, "PackedF2Matrix", R"doc(A bit-packed matrix over GF(2) for faster linear algebra.)doc")
+        .def(py::init<size_t, size_t>(), py::arg("rows"), py::arg("cols"), R"doc(Initialize an empty PackedF2Matrix with given dimensions.)doc")
+        .def_property_readonly("rows", &PackedF2Matrix::rows, R"doc(Number of rows.)doc")
+        .def_property_readonly("cols", &PackedF2Matrix::cols, R"doc(Number of columns.)doc")
+        .def_property_readonly("T", &PackedF2Matrix::T, R"doc(The transpose of the matrix.)doc")
+        .def("rref", &PackedF2Matrix::rref, R"doc(Compute the reduced row echelon form.)doc")
+        .def("rank", &PackedF2Matrix::rank, R"doc(Compute the rank of the matrix.)doc")
+        .def("kernel", &PackedF2Matrix::kernel, R"doc(Compute the kernel (nullspace) of the matrix.)doc")
+        .def("solve", &PackedF2Matrix::solve, py::arg("b"), R"doc(Solve the linear system Ax = b.)doc")
         .def("xor_rows", &PackedF2Matrix::xor_rows, py::arg("dst"),
-             py::arg("src"))
-        .def("xor_bit", &PackedF2Matrix::xor_bit, py::arg("r"), py::arg("c"))
-        .def("one", &PackedF2Matrix::one, py::arg("r"), py::arg("c"))
-        .def("zero", &PackedF2Matrix::zero, py::arg("r"), py::arg("c"))
+             py::arg("src"), R"doc(XOR row `src` into row `dst`.)doc")
+        .def("xor_bit", &PackedF2Matrix::xor_bit, py::arg("r"), py::arg("c"), R"doc(Flip the bit at (r, c).)doc")
+        .def("one", &PackedF2Matrix::one, py::arg("r"), py::arg("c"), R"doc(Set the bit at (r, c) to 1.)doc")
+        .def("zero", &PackedF2Matrix::zero, py::arg("r"), py::arg("c"), R"doc(Set the bit at (r, c) to 0.)doc")
         .def("__matmul__", &PackedF2Matrix::operator*)
         .def("__getitem__",
              [](const PackedF2Matrix &t, py::tuple key) -> uint8_t {
@@ -382,7 +382,7 @@ void pybind_f2_tensor(py::module &m) {
                  t(r, c) = val;
              })
         .def("__str__", &PackedF2Matrix::str)
-        .def("to_list", &PackedF2Matrix::to_list);
+        .def("to_list", &PackedF2Matrix::to_list, R"doc(Convert the matrix into a list of lists of ints.)doc");
 }
 
 } // namespace qec_loss

@@ -6,23 +6,24 @@
 namespace qec_loss {
 
 void pybind_sampler(py::module &m) {
-    py::class_<Sampler>(m, "Sampler")
+    py::class_<Sampler>(m, "Sampler", R"doc(Base Sampler for quantum circuits.)doc")
         .def("sample", &Sampler::sample, py::arg("num_samples"),
              py::arg("reroute_observables") = false,
-             py::arg("optimize_retoute") = false)
-        .def_readonly("circuit", &Sampler::circuit);
+             py::arg("optimize_retoute") = false,
+             R"doc(Generate samples from the circuit.)doc")
+        .def_readonly("circuit", &Sampler::circuit, R"doc(The circuit being sampled.)doc");
 
-    py::class_<SampleBatch>(m, "SampleBatch")
+    py::class_<SampleBatch>(m, "SampleBatch", R"doc(A batch of circuit samples containing measurements, detectors, observables, and loss patterns.)doc")
         .def(py::init<py::array_t<uint8_t>, py::array_t<uint8_t>,
                       py::array_t<uint8_t>, std::vector<LossPattern>>(),
              py::arg("measurements"), py::arg("detectors"),
-             py::arg("observables"), py::arg("loss_patterns"))
+             py::arg("observables"), py::arg("loss_patterns"), R"doc(Initialize SampleBatch with LossPatterns.)doc")
         .def(py::init<py::array_t<uint8_t>, py::array_t<uint8_t>,
                       py::array_t<uint8_t>,
                       std::vector<
                           std::unordered_map<size_t, std::vector<uint32_t>>>>(),
              py::arg("measurements"), py::arg("detectors"),
-             py::arg("observables"), py::arg("loss_patterns"))
+             py::arg("observables"), py::arg("loss_patterns"), R"doc(Initialize SampleBatch with mapped loss patterns.)doc")
         .def_readonly("measurements", &SampleBatch::measurements)
         .def_readonly("detectors", &SampleBatch::detectors)
         .def_readonly("observables", &SampleBatch::observables)
@@ -59,14 +60,15 @@ void pybind_sampler(py::module &m) {
                                    t[3].cast<std::vector<LossPattern>>());
             }));
 
-    py::class_<ForwardSampler, Sampler>(m, "ForwardSampler")
+    py::class_<ForwardSampler, Sampler>(m, "ForwardSampler", R"doc(A sampler that tracks erasure errors forward through the circuit.)doc")
         .def(py::init<const LossyCircuit &, std::optional<uint64_t>>(),
-             py::arg("circuit"), py::arg("seed") = py::none())
-        .def_readonly("circuit", &Sampler::circuit)
+             py::arg("circuit"), py::arg("seed") = py::none(), R"doc(Initialize the ForwardSampler.)doc")
+        .def_readonly("circuit", &Sampler::circuit, R"doc(The circuit being sampled.)doc")
         .def("sample", &ForwardSampler::sample, py::arg("num_samples"),
              py::arg("reroute_observables") = false,
-             py::arg("optimize_retoute") = false)
-        .def("sample_measurements", &ForwardSampler::sample_measurements);
+             py::arg("optimize_retoute") = false,
+             R"doc(Generate samples taking loss routing into account.)doc")
+        .def("sample_measurements", &ForwardSampler::sample_measurements, R"doc(Sample only measurement outcomes.)doc");
 }
 
 } // namespace qec_loss

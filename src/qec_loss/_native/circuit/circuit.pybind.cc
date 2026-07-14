@@ -1,6 +1,8 @@
 #include "circuit.pybind.h"
 #include "loss_instruction.h"
 #include "lossy_circuit.h"
+#include "../sampler/forward_sampler.h"
+#include "../monaka/monaka_builder.h"
 #include <pybind11/stl.h>
 #include <pybind11/stl/filesystem.h>
 
@@ -40,7 +42,17 @@ void pybind_circuit(py::module &m) {
                       &qec_loss::LossyCircuit::num_measurements)
         .def_readonly("num_detectors", &qec_loss::LossyCircuit::num_detectors)
         .def_readonly("num_observables",
-                      &qec_loss::LossyCircuit::num_observables);
+                      &qec_loss::LossyCircuit::num_observables)
+        .def("compile_forward_sampler",
+             [](const qec_loss::LossyCircuit &c, std::optional<uint64_t> seed) {
+                 return qec_loss::ForwardSampler(c, seed);
+             },
+             py::arg("seed") = py::none())
+        .def("compile_monaka_builder",
+             [](const qec_loss::LossyCircuit &c, bool optimize_rerouting) {
+                 return std::make_unique<qec_loss::MonakaBuilder>(c, optimize_rerouting);
+             },
+             py::arg("optimize_rerouting") = false);
 }
 
 } // namespace qec_loss

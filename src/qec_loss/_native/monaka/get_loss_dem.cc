@@ -209,7 +209,7 @@ std::vector<stim::Circuit> get_loss_rewritten_circuits(
                     size_t loss_loc = life_segment.loss_locations[loss_loc_idx];
                     stim::Circuit &out = result[loss_loc_idx];
 
-                    if (i <= loss_loc) {
+                    if (i <= loss_loc || i > life_segment.end) {
                         out.safe_append(stim_instr);
                     } else {
                         // need to rewrite the instruction to account for the

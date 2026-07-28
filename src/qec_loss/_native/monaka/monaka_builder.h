@@ -41,6 +41,9 @@ class MonakaBuilder {
                          const LifeSegment &life_segment) const;
 
     stim::DetectorErrorModel
+    get_dem_from_lost_measurements(const std::vector<size_t> &lost_measurement_indices, bool include_loss_dem = true);
+
+    stim::DetectorErrorModel
     get_dem_from_measurements(py::array_t<uint8_t> measurements);
 
     std::vector<stim::DetectorErrorModel>

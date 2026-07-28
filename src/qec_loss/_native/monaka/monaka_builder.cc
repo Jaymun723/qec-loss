@@ -111,6 +111,28 @@ MonakaBuilder::get_life_segment_dem(const std::vector<uint32_t> &lost_qubits,
     return dem;
 }
 
+stim::DetectorErrorModel MonakaBuilder::get_dem_from_lost_measurements(
+    const std::vector<size_t> &lost_measurement_indices, bool include_loss_dem) {
+    std::vector<uint32_t> lost_qubits;
+    std::vector<LifeSegment> life_segments;
+    for (size_t i : lost_measurement_indices) {
+        LifeSegment life_segment =
+            life_cycle_manager.get_life_segment_for_measurement(i);
+        lost_qubits.push_back(life_segment.qubit);
+        life_segments.push_back(life_segment);
+    }
+
+    stim::DetectorErrorModel final_dem(get_nominal_dem(lost_qubits));
+
+    if (include_loss_dem) {
+        for (const auto &life_segment : life_segments) {
+            final_dem += get_life_segment_dem(lost_qubits, life_segment);
+        }
+    }
+
+    return final_dem;
+}
+
 stim::DetectorErrorModel
 MonakaBuilder::get_dem_from_measurements(py::array_t<uint8_t> measurements) {
     if (measurements.ndim() != 1) {
@@ -124,32 +146,14 @@ MonakaBuilder::get_dem_from_measurements(py::array_t<uint8_t> measurements) {
     }
 
     auto measurements_access = measurements.unchecked<1>();
-    std::vector<uint32_t> lost_qubits;
-    std::vector<LifeSegment> life_segments;
+    std::vector<size_t> lost_indices;
     for (size_t i = 0; i < num_measurements; i++) {
         if (measurements_access(i) == 2) {
-            LifeSegment life_segment =
-                life_cycle_manager.get_life_segment_for_measurement(i);
-            lost_qubits.push_back(life_segment.qubit);
-            life_segments.push_back(life_segment);
+            lost_indices.push_back(i);
         }
     }
 
-    // std::cout << "Lost qubits: ";
-    // for (auto q : lost_qubits) {
-    //     std::cout << q << " ";
-    // }
-    // std::cout << std::endl;
-
-    stim::DetectorErrorModel final_dem(get_nominal_dem(lost_qubits));
-
-    // std::cout << "Nominal DEM:\n" << final_dem.str() << std::endl;
-
-    for (const auto &life_segment : life_segments) {
-        final_dem += get_life_segment_dem(lost_qubits, life_segment);
-    }
-
-    return final_dem;
+    return get_dem_from_lost_measurements(lost_indices);
 }
 
 std::vector<stim::DetectorErrorModel>
@@ -166,24 +170,14 @@ MonakaBuilder::get_dems_from_batch(SampleBatch &batch) {
         py::gil_scoped_release release;
         for (size_t shot_i = 0; shot_i < num_samples; shot_i++) {
 
-            std::vector<uint32_t> lost_qubits;
-            std::vector<LifeSegment> life_segments;
+            std::vector<size_t> lost_indices;
             for (size_t i = 0; i < num_measurements; i++) {
                 if (measurements_access(shot_i, i) == 2) {
-                    LifeSegment life_segment =
-                        life_cycle_manager.get_life_segment_for_measurement(i);
-                    lost_qubits.push_back(life_segment.qubit);
-                    life_segments.push_back(life_segment);
+                    lost_indices.push_back(i);
                 }
             }
 
-            stim::DetectorErrorModel final_dem(get_nominal_dem(lost_qubits));
-
-            for (const auto &life_segment : life_segments) {
-                final_dem += get_life_segment_dem(lost_qubits, life_segment);
-            }
-
-            dems.push_back(final_dem);
+            dems.push_back(get_dem_from_lost_measurements(lost_indices));
         }
     }
 
@@ -209,25 +203,15 @@ MonakaBuilder::decode_batch(SampleBatch &batch, bool include_loss_dem,
     {
         py::gil_scoped_release release;
         for (size_t shot_i = 0; shot_i < num_samples; shot_i++) {
-            std::vector<uint32_t> lost_qubits;
-            std::vector<LifeSegment> life_segments;
+            std::vector<size_t> lost_indices;
             for (size_t i = 0; i < num_measurements; i++) {
                 if (measurements_access(shot_i, i) == 2) {
-                    LifeSegment life_segment =
-                        life_cycle_manager.get_life_segment_for_measurement(i);
-                    lost_qubits.push_back(life_segment.qubit);
-                    life_segments.push_back(life_segment);
+                    lost_indices.push_back(i);
                 }
             }
 
-            stim::DetectorErrorModel final_dem(get_nominal_dem(lost_qubits));
-
-            if (include_loss_dem) {
-                for (const auto &life_segment : life_segments) {
-                    final_dem +=
-                        get_life_segment_dem(lost_qubits, life_segment);
-                }
-            }
+            stim::DetectorErrorModel final_dem =
+                get_dem_from_lost_measurements(lost_indices, include_loss_dem);
 
             // 5. Build the PyMatching decoder for this shot's DEM
             pm::Mwpm mwpm = pm::detector_error_model_to_mwpm(

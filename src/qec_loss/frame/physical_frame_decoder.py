@@ -73,12 +73,14 @@ effect by construction but may differ in exact physical location.
 """
 
 from __future__ import annotations
+
 from collections.abc import Sequence
 from typing import cast
+
 import numpy as np
+import pymatching
 import scipy.sparse as sp
 import stim
-import pymatching
 
 from qec_loss.utils import flattened_instructions
 
@@ -128,10 +130,7 @@ def _final_measurement_targets(
     else:
         missing = [q for q in data_qubits if q not in last_data_meas]
         if missing:
-            raise ValueError(
-                f"data_qubits {missing} have no non-reset M/MX/MY/MZ measurement "
-                f"in the circuit"
-            )
+            raise ValueError(f"data_qubits {missing} have no non-reset M/MX/MY/MZ measurement in the circuit")
         # Preserve caller order for final_qubits; indices still unique per qubit.
         data_meas_indices = [last_data_meas[q] for q in data_qubits]
 
@@ -281,9 +280,7 @@ class PhysicalFrameDecoder:
         self._baseline_final = baseline_record[self._final_meas_indices]
 
         # --- build check matrix + per-fault Pauli/propagation info ---
-        error_instrs = [
-            instr for instr in self.dem if isinstance(instr, stim.DemInstruction) and instr.type == "error"
-        ]
+        error_instrs = [instr for instr in self.dem if isinstance(instr, stim.DemInstruction) and instr.type == "error"]
 
         # 1. Group components by symptom key and compute combined probabilities
         groups = {}  # (det_key, obs_key) -> list of (p, comp_targets)
@@ -381,9 +378,9 @@ class PhysicalFrameDecoder:
             if not explained.circuit_error_locations:
                 raise RuntimeError(f"batched explain returned no circuit location for fault {i} with symptom key {key}")
             loc = explained.circuit_error_locations[0]
-            
+
             direct_flips = set()
-            if getattr(loc, "flipped_measurement", None) is not None:
+            if hasattr(loc, "flipped_measurement") and loc.flipped_measurement is not None:
                 rec_idx = loc.flipped_measurement.record_index
                 if rec_idx in self._final_meas_pos:
                     direct_flips.add(self._final_meas_pos[rec_idx])
@@ -592,5 +589,5 @@ if __name__ == "__main__":
 
     fault_vector, frame, predicted_obs, final_correction = decoder.decode(dets[0])
     print(f"\nshot 0: predicted_obs={predicted_obs}, actual_obs={obs[0]}")
-    print(f"final_correction (qubit -> flip bit before combining into observable):")
+    print("final_correction (qubit -> flip bit before combining into observable):")
     print(final_correction)

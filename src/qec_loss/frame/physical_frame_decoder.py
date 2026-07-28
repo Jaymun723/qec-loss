@@ -371,6 +371,7 @@ class PhysicalFrameDecoder:
         # contributions are simulated eagerly or lazily (Stage 3) below.
         self.error_to_paulis: dict[int, list[tuple[int, str]]] = {}
         self._fault_offsets: dict[int, int | None] = {}
+        self._fault_direct_meas_flips: dict[int, set[int]] = {}
         self._final_frame_contributions: dict[int, set[int]] = {}
 
         for i in range(self.num_errors):
@@ -380,6 +381,14 @@ class PhysicalFrameDecoder:
             if not explained.circuit_error_locations:
                 raise RuntimeError(f"batched explain returned no circuit location for fault {i} with symptom key {key}")
             loc = explained.circuit_error_locations[0]
+            
+            direct_flips = set()
+            if getattr(loc, "flipped_measurement", None) is not None:
+                rec_idx = loc.flipped_measurement.record_index
+                if rec_idx in self._final_meas_pos:
+                    direct_flips.add(self._final_meas_pos[rec_idx])
+            self._fault_direct_meas_flips[i] = direct_flips
+
             paulis = []
             for gtc in loc.flipped_pauli_product:
                 gt = gtc.gate_target
@@ -425,11 +434,11 @@ class PhysicalFrameDecoder:
         if i in self._final_frame_contributions:
             return self._final_frame_contributions[i]
 
+        contribution = set(self._fault_direct_meas_flips[i])
+
         paulis = self.error_to_paulis[i]
         offset = self._fault_offsets[i]
-        if not paulis or offset is None:
-            contribution: set[int] = set()
-        else:
+        if paulis and offset is not None:
             if self._checkpoints is None or self._noisy_flat is None:
                 raise RuntimeError(
                     "fault resolution data was discarded; construct with lazy=True "
@@ -437,7 +446,7 @@ class PhysicalFrameDecoder:
                 )
             result = _simulate_fault_from_checkpoint(self._noisy_flat, self._checkpoints, offset, paulis)
             flipped = result[self._final_meas_indices] != self._baseline_final
-            contribution = set(np.where(flipped)[0].tolist())
+            contribution.update(np.where(flipped)[0].tolist())
 
         self._final_frame_contributions[i] = contribution
         return contribution

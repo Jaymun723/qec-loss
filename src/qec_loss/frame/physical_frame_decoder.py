@@ -399,6 +399,27 @@ class PhysicalFrameDecoder:
             self._resolve_contribution(i)
         return self._final_frame_contributions
 
+    def _outputs_from_fault_vector(self, fault_vector: np.ndarray):
+        """Build frame / predicted_obs / final_correction from a fault vector."""
+        predicted_obs = (self.observables_matrix @ fault_vector) % 2
+
+        frame: dict[int, str] = {}
+        final_local = np.zeros(len(self._final_meas_indices), dtype=np.uint8)
+        table = {'I': (0, 0), 'X': (1, 0), 'Z': (0, 1), 'Y': (1, 1)}
+        inv = {v: k for k, v in table.items()}
+        for i, bit in enumerate(fault_vector):
+            if not bit:
+                continue
+            for qubit, pauli in self.error_to_paulis[i]:
+                x1, z1 = table[frame.get(qubit, 'I')]
+                x2, z2 = table[pauli]
+                frame[qubit] = inv[(x1 ^ x2, z1 ^ z2)]
+            for local_idx in self._resolve_contribution(i):
+                final_local[local_idx] ^= 1
+
+        final_correction = {q: int(b) for q, b in zip(self.final_qubits, final_local)}
+        return frame, predicted_obs, final_correction
+
     def decode(self, syndrome: np.ndarray):
         """
         Returns
@@ -419,25 +440,45 @@ class PhysicalFrameDecoder:
             of the circuit via direct simulation. This is what you asked for.
         """
         fault_vector = self.matching_phys.decode(syndrome)
-        predicted_obs = (self.observables_matrix @ fault_vector) % 2
-
-        frame: dict[int, str] = {}
-        final_local = np.zeros(len(self._final_meas_indices), dtype=np.uint8)
-        for i, bit in enumerate(fault_vector):
-            if not bit:
-                continue
-            for qubit, pauli in self.error_to_paulis[i]:
-                table = {'I': (0, 0), 'X': (1, 0), 'Z': (0, 1), 'Y': (1, 1)}
-                inv = {v: k for k, v in table.items()}
-                x1, z1 = table[frame.get(qubit, 'I')]
-                x2, z2 = table[pauli]
-                frame[qubit] = inv[(x1 ^ x2, z1 ^ z2)]
-            for local_idx in self._resolve_contribution(i):
-                final_local[local_idx] ^= 1
-
-        final_correction = {q: int(b) for q, b in zip(self.final_qubits, final_local)}
-
+        frame, predicted_obs, final_correction = self._outputs_from_fault_vector(
+            fault_vector
+        )
         return fault_vector, frame, predicted_obs, final_correction
+
+    def decode_batch(self, syndromes: np.ndarray):
+        """
+        Vectorized decode over many syndrome shots via
+        ``pymatching.Matching.decode_batch``.
+
+        Parameters
+        ----------
+        syndromes : np.ndarray
+            Shape ``(num_shots, num_detectors)``, dtype uint8/bool.
+
+        Returns
+        -------
+        fault_vectors : np.uint8[num_shots, num_errors]
+        frames : list[dict[int, str]]
+        predicted_obs : np.uint8[num_shots, num_observables]
+        final_corrections : list[dict[int, int]]
+        """
+        syndromes = np.asarray(syndromes)
+        if syndromes.ndim == 1:
+            syndromes = syndromes.reshape(1, -1)
+        fault_vectors = self.matching_phys.decode_batch(syndromes)
+
+        frames = []
+        predicted_obs = np.empty(
+            (len(fault_vectors), self.num_observables), dtype=np.uint8
+        )
+        final_corrections = []
+        for s, fault_vector in enumerate(fault_vectors):
+            frame, obs, final_correction = self._outputs_from_fault_vector(fault_vector)
+            frames.append(frame)
+            predicted_obs[s] = obs
+            final_corrections.append(final_correction)
+
+        return fault_vectors, frames, predicted_obs, final_corrections
 
 
 if __name__ == "__main__":

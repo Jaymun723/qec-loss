@@ -1,3 +1,4 @@
+import numpy as np
 import stim
 import pymatching
 from qec_loss.frame.physical_frame_decoder import PhysicalFrameDecoder
@@ -89,3 +90,21 @@ def test_lazy_decode_then_ground_truth():
 
     _assert_ground_truth(decoder)
     assert len(decoder._final_frame_contributions) == decoder.num_errors
+
+
+def test_decode_batch_matches_per_shot():
+    """Stage 4: decode_batch must agree with the per-shot decode loop."""
+    circuit = _surface_code_circuit()
+    decoder = PhysicalFrameDecoder(circuit, lazy=False)
+    dets, _ = circuit.compile_detector_sampler().sample(
+        shots=200, separate_observables=True
+    )
+
+    fault_vectors, frames, predicted_obs, final_corrections = decoder.decode_batch(dets)
+
+    for s in range(len(dets)):
+        fv, frame, obs, final = decoder.decode(dets[s])
+        assert np.array_equal(fv, fault_vectors[s])
+        assert frame == frames[s]
+        assert np.array_equal(obs, predicted_obs[s])
+        assert final == final_corrections[s]

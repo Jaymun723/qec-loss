@@ -36,20 +36,19 @@ This module answers it by direct simulation: for each candidate fault,
 `Circuit.explain_detector_error_model_errors` tells us both (a) the
 equivalent Pauli to apply and (b) the EXACT circuit instruction it
 originated from (`stack_frames[0].instruction_offset`, an index into
-`circuit.flattened()`). We rebuild a fully deterministic copy of the
-circuit -- every other stochastic error channel stripped out via
-`stim.gate_data(name).is_noisy_gate`, every measurement-producing gate kept
-(any built-in readout-noise argument zeroed instead of the gate being
-removed) -- with that one instruction replaced by an explicit Pauli at
-exactly the right point in the instruction stream. Diffing its final
-measurement record against a noise-free baseline gives the fault's true
-effect on every final measurement, correctly handling resets, basis
-changes, and multi-round propagation without any hand-rolled Pauli algebra.
-This was verified to reproduce stim's own DEM-recorded observable
-membership exactly (0/N mismatches) for every individual fault mechanism in
-a distance-5, 5-round surface code circuit -- an earlier tick-boundary
-version of this (imprecise about *where within a tick* to inject) was
-wrong on ~0.6% of faults; this instruction-offset version isn't.
+`circuit.flattened()`). We run the noiseless circuit once through a
+`stim.TableauSimulator`, checkpointing at every `TICK`, then for each
+fault clone the nearest preceding checkpoint, apply the Pauli via the
+simulator's own `.x()`/`.y()`/`.z()`, and advance only the remaining
+suffix (stochastic channels stripped via `stim.gate_data(name).is_noisy_gate`,
+measurement-producing gates kept with readout-noise args zeroed). Diffing
+the resulting measurement record against the noiseless baseline gives the
+fault's true effect on every final measurement. This was verified to
+reproduce stim's own DEM-recorded observable membership exactly
+(0/N mismatches) for every individual fault mechanism in a distance-5,
+5-round surface code circuit -- an earlier tick-boundary version of this
+(imprecise about *where within a tick* to inject) was wrong on ~0.6% of
+faults; this instruction-offset version isn't.
 
 CAVEAT: `final_correction` is still only one representative of the
 decoder's chosen equivalence class (MWPM doesn't know "the" error, only a
@@ -117,37 +116,63 @@ def _strip_measurement_noise_arg(instr: stim.CircuitInstruction) -> stim.Circuit
     return instr
 
 
-def _build_baseline_circuit(noisy_flat):
-    out = stim.Circuit()
-    for instr in noisy_flat:
-        if _is_pure_noise_channel(instr):
-            continue
-        out.append(_strip_measurement_noise_arg(instr))
-    return out
+def _do_deterministic(sim: stim.TableauSimulator, instr: stim.CircuitInstruction) -> None:
+    """Apply one instruction with pure noise stripped / readout noise zeroed."""
+    if _is_pure_noise_channel(instr):
+        return
+    sim.do(_strip_measurement_noise_arg(instr))
 
 
-def _build_injected_circuit(noisy_flat, target_offset: int, pauli_ops):
-    """Deterministic circuit: every OTHER noise channel stripped, and the
-    exact instruction at `target_offset` (identified via
-    CircuitErrorLocation.stack_frames[0].instruction_offset) replaced by an
-    explicit, deterministic Pauli on the qubits stim itself reported."""
-    out = stim.Circuit()
+def _build_tick_checkpoints(noisy_flat):
+    """Run the noiseless circuit once; stash a TableauSimulator clone at start
+    and after every TICK. Returns (checkpoints, baseline_record) where
+    checkpoints is a list of (after_instruction_index, simulator) with
+    after_instruction_index=-1 for the initial state."""
+    sim = stim.TableauSimulator()
+    checkpoints = [(-1, sim.copy())]
     for j, instr in enumerate(noisy_flat):
+        _do_deterministic(sim, instr)
+        if instr.name == "TICK":
+            checkpoints.append((j, sim.copy()))
+    baseline_record = np.asarray(sim.current_measurement_record(), dtype=np.uint8)
+    return checkpoints, baseline_record
+
+
+def _nearest_checkpoint(checkpoints, target_offset: int):
+    """Largest checkpoint whose after_index is strictly before target_offset."""
+    best = checkpoints[0]
+    for cp in checkpoints:
+        if cp[0] < target_offset:
+            best = cp
+        else:
+            break
+    return best
+
+
+def _simulate_fault_from_checkpoint(noisy_flat, checkpoints, target_offset: int, pauli_ops):
+    """Clone the nearest preceding checkpoint, apply pauli_ops at
+    target_offset, then advance the remaining suffix. Returns the full
+    measurement record."""
+    after_idx, cp = _nearest_checkpoint(checkpoints, target_offset)
+    sim = cp.copy()
+    for j in range(after_idx + 1, len(noisy_flat)):
+        instr = noisy_flat[j]
         if j == target_offset:
-            if _is_pure_noise_channel(instr):
-                for q, p in pauli_ops:
-                    out.append(p, [q])
-            else:
-                # target instruction is itself a measurement (rare: it was
-                # carrying its own readout-noise arg) -- inject just before it.
-                for q, p in pauli_ops:
-                    out.append(p, [q])
-                out.append(_strip_measurement_noise_arg(instr))
+            for q, p in pauli_ops:
+                if p == "X":
+                    sim.x(q)
+                elif p == "Y":
+                    sim.y(q)
+                elif p == "Z":
+                    sim.z(q)
+            # Pure noise at the fault site is replaced by the Pauli.
+            # A measurement carrying its own readout-noise arg keeps the
+            # (noise-stripped) measurement, with the Pauli applied just before.
+            if not _is_pure_noise_channel(instr):
+                sim.do(_strip_measurement_noise_arg(instr))
             continue
-        if _is_pure_noise_channel(instr):
-            continue
-        out.append(_strip_measurement_noise_arg(instr))
-    return out
+        _do_deterministic(sim, instr)
+    return np.asarray(sim.current_measurement_record(), dtype=np.uint8)
 
 
 class PhysicalFrameDecoder:
@@ -175,9 +200,9 @@ class PhysicalFrameDecoder:
         self.final_qubits = [self.meas_to_qubit[m] for m in self._final_meas_indices]
 
         noisy_flat = list(circuit.flattened())
-        baseline_circuit = _build_baseline_circuit(noisy_flat)
-        baseline = baseline_circuit.compile_sampler().sample(shots=1)[0]
-        self._baseline_final = baseline[self._final_meas_indices]
+        # Stage 2: one noiseless TableauSimulator pass with TICK checkpoints.
+        checkpoints, baseline_record = _build_tick_checkpoints(noisy_flat)
+        self._baseline_final = baseline_record[self._final_meas_indices]
 
         # --- build check matrix + per-fault Pauli/propagation info ---
         error_instrs = [instr for instr in self.dem if instr.type == "error"]
@@ -232,7 +257,8 @@ class PhysicalFrameDecoder:
 
         self.num_errors = len(groups)
 
-        # 3. Batch explain
+        # 3. Batch explain: one call for all merged representatives (Stage 1).
+        # Match results back by the same symptom key used for edge merging.
         explained_errors = circuit.explain_detector_error_model_errors(
             dem_filter=flat_dem,
             reduce_to_one_representative_error=True,
@@ -248,38 +274,56 @@ class PhysicalFrameDecoder:
                     det_key.append(t.val)
                 elif t.is_logical_observable_id():
                     obs_key.append(t.val)
-            symptom_to_explained[(frozenset(det_key), frozenset(obs_key))] = explained
+            key = (frozenset(det_key), frozenset(obs_key))
+            if key in symptom_to_explained:
+                raise RuntimeError(
+                    f"duplicate symptom key from batched explain: {key}"
+                )
+            symptom_to_explained[key] = explained
 
-        # 4. Populate error_to_paulis and final_frame_contributions
+        missing = set(symptom_keys_for_fault) - set(symptom_to_explained)
+        if missing:
+            raise RuntimeError(
+                f"batched explain missed {len(missing)} symptom key(s); "
+                f"first missing={next(iter(missing))}"
+            )
+
+        # 4. Populate error_to_paulis and final_frame_contributions via
+        # checkpointed TableauSimulator suffix replay (Stage 2).
         self.error_to_paulis: dict[int, list[tuple[int, str]]] = {}
         self.final_frame_contributions: dict[int, set[int]] = {}
 
         for i in range(self.num_errors):
             key = symptom_keys_for_fault[i]
-            explained = symptom_to_explained.get(key)
+            explained = symptom_to_explained[key]
 
             paulis = []
             contribution = set()
-            if explained and explained.circuit_error_locations:
-                loc = explained.circuit_error_locations[0]
-                for gtc in loc.flipped_pauli_product:
-                    gt = gtc.gate_target
-                    if gt.is_x_target:
-                        pauli = 'X'
-                    elif gt.is_y_target:
-                        pauli = 'Y'
-                    elif gt.is_z_target:
-                        pauli = 'Z'
-                    else:
-                        continue
-                    paulis.append((gt.value, pauli))
+            if not explained.circuit_error_locations:
+                raise RuntimeError(
+                    f"batched explain returned no circuit location for fault {i} "
+                    f"with symptom key {key}"
+                )
+            loc = explained.circuit_error_locations[0]
+            for gtc in loc.flipped_pauli_product:
+                gt = gtc.gate_target
+                if gt.is_x_target:
+                    pauli = 'X'
+                elif gt.is_y_target:
+                    pauli = 'Y'
+                elif gt.is_z_target:
+                    pauli = 'Z'
+                else:
+                    continue
+                paulis.append((gt.value, pauli))
 
-                if paulis:
-                    target_offset = loc.stack_frames[0].instruction_offset
-                    injected = _build_injected_circuit(noisy_flat, target_offset, paulis)
-                    result = injected.compile_sampler().sample(shots=1)[0]
-                    flipped = result[self._final_meas_indices] != self._baseline_final
-                    contribution = set(np.where(flipped)[0].tolist())
+            if paulis:
+                target_offset = loc.stack_frames[0].instruction_offset
+                result = _simulate_fault_from_checkpoint(
+                    noisy_flat, checkpoints, target_offset, paulis
+                )
+                flipped = result[self._final_meas_indices] != self._baseline_final
+                contribution = set(np.where(flipped)[0].tolist())
 
             self.error_to_paulis[i] = paulis
             self.final_frame_contributions[i] = contribution
@@ -352,7 +396,7 @@ if __name__ == "__main__":
         before_measure_flip_probability=0.01,
     )
 
-    print("building decoder (simulates each fault once -- can take a bit)...")
+    print("building decoder (checkpointed TableauSimulator per fault)...")
     decoder = PhysicalFrameDecoder(circuit)
     print(f"errors: {decoder.num_errors}, detectors: {decoder.num_detectors}, "
           f"observables: {decoder.num_observables}, final qubits tracked: "

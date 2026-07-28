@@ -63,6 +63,16 @@ def _assert_decode_correctness(decoder: PhysicalFrameDecoder, circuit: stim.Circ
     )
 
 
+def _strip_observable_include(circuit: stim.Circuit) -> stim.Circuit:
+    """Return a copy of `circuit` with every OBSERVABLE_INCLUDE removed."""
+    out = stim.Circuit()
+    for instr in circuit:
+        if instr.name == "OBSERVABLE_INCLUDE":
+            continue
+        out.append(instr)
+    return out
+
+
 def test_per_fault_ground_truth_vs_dem_observables():
     """Eager mode: full table available immediately after construction."""
     circuit = _surface_code_circuit()
@@ -108,3 +118,107 @@ def test_decode_batch_matches_per_shot():
         assert frame == frames[s]
         assert np.array_equal(obs, predicted_obs[s])
         assert final == final_corrections[s]
+
+
+def test_apply_frame_to_measurements_recovers_observable():
+    """End-to-end: strip OBSERVABLE_INCLUDE, sample, decode, apply frame.
+
+    Workflow this locks in:
+      1. Build a surface-code memory circuit (with OBSERVABLE_INCLUDE) and a
+         PhysicalFrameDecoder from it — the include lines tell the decoder
+         which final measurements form each logical.
+      2. Strip OBSERVABLE_INCLUDE and sample raw measurement bits (no stim
+         observable tracking at sample time).
+      3. Convert measurements → detectors, decode → final_correction.
+      4. XOR final_correction onto the obs-group measurement bits; their
+         parity is the decoded logical value (0 for Z-memory when the
+         decoder is correct).
+    """
+    circuit = _surface_code_circuit(distance=3, rounds=3)
+    circuit_no_obs = _strip_observable_include(circuit)
+    assert circuit_no_obs.num_observables == 0
+    assert circuit_no_obs.num_measurements == circuit.num_measurements
+    assert circuit_no_obs.num_detectors == circuit.num_detectors
+
+    decoder = PhysicalFrameDecoder(circuit, lazy=False)
+    assert len(decoder.obs_groups) == 1
+
+    shots = 200
+    measurements = circuit_no_obs.compile_sampler().sample(shots=shots)
+    dets = circuit_no_obs.compile_m2d_converter().convert(
+        measurements=measurements, append_observables=False
+    )
+    # Ground-truth observable flips from the original declaration, applied to
+    # the same measurement record (OBSERVABLE_INCLUDE does not affect sampling).
+    _, true_obs = circuit.compile_m2d_converter().convert(
+        measurements=measurements, separate_observables=True
+    )
+
+    n_frame_recovers_prepared = 0
+    n_decode_correct = 0
+    for s in range(shots):
+        _, _, predicted_obs, final_correction = decoder.decode(dets[s])
+
+        # Raw logical from measurements alone (== stim's true_obs for Z-memory).
+        raw_obs = 0
+        # Frame-corrected logical: XOR final_correction onto each obs-group bit.
+        corrected_obs = 0
+        correction_parity = 0
+        for m in decoder.obs_groups[0]:
+            q = decoder.meas_to_qubit[m]
+            raw_obs ^= int(measurements[s, m])
+            corrected_obs ^= int(measurements[s, m]) ^ final_correction[q]
+            correction_parity ^= final_correction[q]
+
+        assert raw_obs == int(true_obs[s, 0])
+        assert correction_parity == int(predicted_obs[0])
+
+        if predicted_obs[0] == true_obs[s, 0]:
+            n_decode_correct += 1
+            # Successful decode ⇒ corrected measurements recover the prepared |0⟩.
+            assert corrected_obs == 0
+            n_frame_recovers_prepared += 1
+        else:
+            assert corrected_obs == 1
+
+    assert n_decode_correct == n_frame_recovers_prepared
+    assert n_decode_correct > shots * 0.5  # well above chance at this noise
+
+
+def test_decoder_without_observable_include_all_data_qubits():
+    """Build on a circuit with no OBSERVABLE_INCLUDE; correct all data qubits."""
+    circuit = _surface_code_circuit(distance=3, rounds=3)
+    circuit_no_obs = _strip_observable_include(circuit)
+    assert circuit_no_obs.num_observables == 0
+
+    # Final data layer of a d=3 rotated memory: M 1 3 5 8 10 12 15 17 19
+    expected_data = [1, 3, 5, 8, 10, 12, 15, 17, 19]
+
+    decoder = PhysicalFrameDecoder(circuit_no_obs, lazy=False)
+    assert decoder.obs_groups == []
+    assert decoder.num_observables == 0
+    assert decoder.final_qubits == expected_data
+
+    # Same data qubits when built from the circuit that still has includes.
+    decoder_with_obs = PhysicalFrameDecoder(circuit, lazy=False)
+    assert set(decoder_with_obs.final_qubits) == set(expected_data)
+    assert len(decoder_with_obs.obs_groups) == 1
+    # Obs support is a proper subset of all data qubits.
+    obs_qubits = {decoder_with_obs.meas_to_qubit[m] for m in decoder_with_obs.obs_groups[0]}
+    assert obs_qubits < set(expected_data)
+
+    measurements = circuit_no_obs.compile_sampler().sample(shots=50)
+    dets = circuit_no_obs.compile_m2d_converter().convert(
+        measurements=measurements, append_observables=False
+    )
+    fault_vector, frame, predicted_obs, final_correction = decoder.decode(dets[0])
+    assert len(predicted_obs) == 0
+    assert set(final_correction) == set(expected_data)
+    assert all(b in (0, 1) for b in final_correction.values())
+
+    # data_qubits override keeps only the listed qubits (last non-reset M each).
+    subset = [1, 5, 19]
+    decoder_sub = PhysicalFrameDecoder(circuit_no_obs, data_qubits=subset)
+    assert decoder_sub.final_qubits == subset
+    _, _, _, corr_sub = decoder_sub.decode(dets[0])
+    assert list(corr_sub.keys()) == subset

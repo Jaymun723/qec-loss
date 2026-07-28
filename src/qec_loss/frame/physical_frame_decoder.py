@@ -12,9 +12,9 @@ you two extra things:
 
   2. `final_correction` -- that same chosen error pattern, PROPAGATED
      forward to the end of the circuit and expressed as a bit to XOR onto
-     each of the final data-qubit measurement outcomes that feed your
-     logical observable(s). This is the thing you asked for: "the frame to
-     XOR at the end."
+     each tracked final data-qubit measurement. By default every non-reset
+     M/MX/MY/MZ target is tracked (the final data layer in a typical memory
+     experiment), so OBSERVABLE_INCLUDE is optional.
 
 WHY (2) NEEDS ACTUAL SIMULATION, NOT JUST BOOKKEEPING
 ------------------------------------------------------
@@ -73,30 +73,69 @@ effect by construction but may differ in exact physical location.
 """
 
 from __future__ import annotations
+from collections.abc import Sequence
+from typing import cast
 import numpy as np
 import scipy.sparse as sp
 import stim
 import pymatching
 
+from qec_loss.utils import flattened_instructions
 
-def _final_measurement_targets(circuit: stim.Circuit):
+# Non-reset measure gates — typically the final data-qubit readout layer.
+# Mid-circuit syndrome readouts use MR* and are not treated as data.
+_DATA_MEASURE_GATES = frozenset({"M", "MZ", "MX", "MY"})
+_ALL_MEASURE_GATES = _DATA_MEASURE_GATES | frozenset({"MR", "MRX", "MRY", "MRZ"})
+
+
+def _final_measurement_targets(
+    circuit: stim.Circuit,
+    data_qubits: Sequence[int] | None = None,
+):
     """
     Returns:
         meas_to_qubit: list, meas_to_qubit[m] = qubit measured at absolute
             measurement index m.
         obs_groups: list[list[int]], obs_groups[k] = absolute measurement
-            indices that make up original logical observable k.
+            indices that make up original logical observable k (empty if the
+            circuit has no OBSERVABLE_INCLUDE).
+        data_meas_indices: sorted absolute measurement indices of terminal
+            data-qubit readouts (non-reset M/MX/MY/MZ). If ``data_qubits`` is
+            given, only each listed qubit's *last* such measurement is kept.
     """
-    meas_to_qubit = []
-    obs_groups = []
-    for instr in circuit.flattened():
-        if instr.name in ("M", "MZ", "MX", "MY", "MR", "MRX", "MRY", "MRZ"):
+    meas_to_qubit: list[int] = []
+    obs_groups: list[list[int]] = []
+    # qubit -> absolute measurement index of its latest non-reset M
+    last_data_meas: dict[int, int] = {}
+    all_data_meas: list[int] = []
+
+    for instr in flattened_instructions(circuit):
+        if instr.name in _ALL_MEASURE_GATES:
+            is_data_meas = instr.name in _DATA_MEASURE_GATES
             for t in instr.targets_copy():
-                meas_to_qubit.append(t.value)
+                q = t.value
+                m = len(meas_to_qubit)
+                meas_to_qubit.append(q)
+                if is_data_meas:
+                    last_data_meas[q] = m
+                    all_data_meas.append(m)
         elif instr.name == "OBSERVABLE_INCLUDE":
             total = len(meas_to_qubit)
             obs_groups.append(sorted(total + t.value for t in instr.targets_copy()))
-    return meas_to_qubit, obs_groups
+
+    if data_qubits is None:
+        data_meas_indices = sorted(all_data_meas)
+    else:
+        missing = [q for q in data_qubits if q not in last_data_meas]
+        if missing:
+            raise ValueError(
+                f"data_qubits {missing} have no non-reset M/MX/MY/MZ measurement "
+                f"in the circuit"
+            )
+        # Preserve caller order for final_qubits; indices still unique per qubit.
+        data_meas_indices = [last_data_meas[q] for q in data_qubits]
+
+    return meas_to_qubit, obs_groups, data_meas_indices
 
 
 def _is_pure_noise_channel(instr: stim.CircuitInstruction) -> bool:
@@ -186,7 +225,9 @@ class PhysicalFrameDecoder:
     Parameters
     ----------
     circuit :
-        Noisy stim circuit to decode.
+        Noisy stim circuit to decode. ``OBSERVABLE_INCLUDE`` is optional: without
+        it, ``predicted_obs`` is empty and matching uses detectors only, while
+        ``final_correction`` still covers all tracked data qubits.
     decompose_errors :
         Forwarded to ``circuit.detector_error_model``.
     lazy :
@@ -195,6 +236,11 @@ class PhysicalFrameDecoder:
         ``final_frame_contributions``), then cache it. If False (default),
         resolve every fault at construction time so decode pays only matching
         cost.
+    data_qubits :
+        Optional qubit ids to track for ``final_correction``. Default: every
+        target of non-reset ``M``/``MX``/``MY``/``MZ`` in the circuit (the
+        final data layer in a typical memory experiment). If given, each
+        listed qubit's *last* such measurement is tracked.
     """
 
     def __init__(
@@ -202,6 +248,7 @@ class PhysicalFrameDecoder:
         circuit: stim.Circuit,
         decompose_errors: bool = True,
         lazy: bool = False,
+        data_qubits: Sequence[int] | None = None,
     ):
         self.circuit = circuit
         self.lazy = lazy
@@ -211,14 +258,22 @@ class PhysicalFrameDecoder:
         self.num_observables = dem.num_observables
 
         # --- final-measurement bookkeeping ---
-        self.meas_to_qubit, self.obs_groups = _final_measurement_targets(circuit)
-        # local indices (0..K-1) into the set of measurements that matter,
-        # i.e. the union of everything referenced by any logical observable
-        self._final_meas_indices = sorted({m for g in self.obs_groups for m in g})
+        (
+            self.meas_to_qubit,
+            self.obs_groups,
+            data_meas_indices,
+        ) = _final_measurement_targets(circuit, data_qubits=data_qubits)
+        if not data_meas_indices:
+            raise ValueError(
+                "circuit has no non-reset M/MX/MY/MZ measurements to track; "
+                "pass data_qubits=... or add a final data-qubit measurement layer"
+            )
+        # Track all terminal data readouts (not only OBSERVABLE_INCLUDE support).
+        self._final_meas_indices = list(data_meas_indices)
         self._final_meas_pos = {m: k for k, m in enumerate(self._final_meas_indices)}
         self.final_qubits = [self.meas_to_qubit[m] for m in self._final_meas_indices]
 
-        noisy_flat = list(circuit.flattened())
+        noisy_flat = flattened_instructions(circuit)
         # Stage 2: one noiseless TableauSimulator pass with TICK checkpoints.
         checkpoints, baseline_record = _build_tick_checkpoints(noisy_flat)
         self._noisy_flat = noisy_flat
@@ -226,14 +281,20 @@ class PhysicalFrameDecoder:
         self._baseline_final = baseline_record[self._final_meas_indices]
 
         # --- build check matrix + per-fault Pauli/propagation info ---
-        error_instrs = [instr for instr in self.dem if instr.type == "error"]
+        error_instrs = [
+            instr for instr in self.dem if isinstance(instr, stim.DemInstruction) and instr.type == "error"
+        ]
 
         # 1. Group components by symptom key and compute combined probabilities
-        groups = {} # (det_key, obs_key) -> list of (p, comp_targets)
+        groups = {}  # (det_key, obs_key) -> list of (p, comp_targets)
         for instr in error_instrs:
             p = instr.args_copy()[0]
-            components = [[]]
+            components: list[list[stim.DemTarget]] = [[]]
+            # An `error` instruction's targets are always DemTargets, never the
+            # raw ints that e.g. `shift_detectors` carries.
             for t in instr.targets_copy():
+                if not isinstance(t, stim.DemTarget):
+                    continue
                 if t.is_separator():
                     components.append([])
                 else:
@@ -297,16 +358,13 @@ class PhysicalFrameDecoder:
                     obs_key.append(t.val)
             key = (frozenset(det_key), frozenset(obs_key))
             if key in symptom_to_explained:
-                raise RuntimeError(
-                    f"duplicate symptom key from batched explain: {key}"
-                )
+                raise RuntimeError(f"duplicate symptom key from batched explain: {key}")
             symptom_to_explained[key] = explained
 
         missing = set(symptom_keys_for_fault) - set(symptom_to_explained)
         if missing:
             raise RuntimeError(
-                f"batched explain missed {len(missing)} symptom key(s); "
-                f"first missing={next(iter(missing))}"
+                f"batched explain missed {len(missing)} symptom key(s); first missing={next(iter(missing))}"
             )
 
         # 4. Extract per-fault Paulis + instruction offsets (cheap). Final-frame
@@ -320,28 +378,23 @@ class PhysicalFrameDecoder:
             explained = symptom_to_explained[key]
 
             if not explained.circuit_error_locations:
-                raise RuntimeError(
-                    f"batched explain returned no circuit location for fault {i} "
-                    f"with symptom key {key}"
-                )
+                raise RuntimeError(f"batched explain returned no circuit location for fault {i} with symptom key {key}")
             loc = explained.circuit_error_locations[0]
             paulis = []
             for gtc in loc.flipped_pauli_product:
                 gt = gtc.gate_target
                 if gt.is_x_target:
-                    pauli = 'X'
+                    pauli = "X"
                 elif gt.is_y_target:
-                    pauli = 'Y'
+                    pauli = "Y"
                 elif gt.is_z_target:
-                    pauli = 'Z'
+                    pauli = "Z"
                 else:
                     continue
                 paulis.append((gt.value, pauli))
 
             self.error_to_paulis[i] = paulis
-            self._fault_offsets[i] = (
-                loc.stack_frames[0].instruction_offset if paulis else None
-            )
+            self._fault_offsets[i] = loc.stack_frames[0].instruction_offset if paulis else None
 
         if not lazy:
             for i in range(self.num_errors):
@@ -382,9 +435,7 @@ class PhysicalFrameDecoder:
                     "fault resolution data was discarded; construct with lazy=True "
                     "to keep checkpoints for on-demand resolution"
                 )
-            result = _simulate_fault_from_checkpoint(
-                self._noisy_flat, self._checkpoints, offset, paulis
-            )
+            result = _simulate_fault_from_checkpoint(self._noisy_flat, self._checkpoints, offset, paulis)
             flipped = result[self._final_meas_indices] != self._baseline_final
             contribution = set(np.where(flipped)[0].tolist())
 
@@ -405,13 +456,13 @@ class PhysicalFrameDecoder:
 
         frame: dict[int, str] = {}
         final_local = np.zeros(len(self._final_meas_indices), dtype=np.uint8)
-        table = {'I': (0, 0), 'X': (1, 0), 'Z': (0, 1), 'Y': (1, 1)}
+        table = {"I": (0, 0), "X": (1, 0), "Z": (0, 1), "Y": (1, 1)}
         inv = {v: k for k, v in table.items()}
         for i, bit in enumerate(fault_vector):
             if not bit:
                 continue
             for qubit, pauli in self.error_to_paulis[i]:
-                x1, z1 = table[frame.get(qubit, 'I')]
+                x1, z1 = table[frame.get(qubit, "I")]
                 x2, z2 = table[pauli]
                 frame[qubit] = inv[(x1 ^ x2, z1 ^ z2)]
             for local_idx in self._resolve_contribution(i):
@@ -439,10 +490,9 @@ class PhysicalFrameDecoder:
             outcome, obtained by propagating the selected faults to the end
             of the circuit via direct simulation. This is what you asked for.
         """
-        fault_vector = self.matching_phys.decode(syndrome)
-        frame, predicted_obs, final_correction = self._outputs_from_fault_vector(
-            fault_vector
-        )
+        # Only the (ndarray, weight) form is a tuple, and we never ask for weights.
+        fault_vector = cast(np.ndarray, self.matching_phys.decode(syndrome))
+        frame, predicted_obs, final_correction = self._outputs_from_fault_vector(fault_vector)
         return fault_vector, frame, predicted_obs, final_correction
 
     def decode_batch(self, syndromes: np.ndarray):
@@ -465,12 +515,10 @@ class PhysicalFrameDecoder:
         syndromes = np.asarray(syndromes)
         if syndromes.ndim == 1:
             syndromes = syndromes.reshape(1, -1)
-        fault_vectors = self.matching_phys.decode_batch(syndromes)
+        fault_vectors = cast(np.ndarray, self.matching_phys.decode_batch(syndromes))
 
         frames = []
-        predicted_obs = np.empty(
-            (len(fault_vectors), self.num_observables), dtype=np.uint8
-        )
+        predicted_obs = np.empty((len(fault_vectors), self.num_observables), dtype=np.uint8)
         final_corrections = []
         for s, fault_vector in enumerate(fault_vectors):
             frame, obs, final_correction = self._outputs_from_fault_vector(fault_vector)
@@ -493,9 +541,11 @@ if __name__ == "__main__":
 
     print("building decoder (checkpointed TableauSimulator per fault)...")
     decoder = PhysicalFrameDecoder(circuit)
-    print(f"errors: {decoder.num_errors}, detectors: {decoder.num_detectors}, "
-          f"observables: {decoder.num_observables}, final qubits tracked: "
-          f"{len(decoder.final_qubits)}")
+    print(
+        f"errors: {decoder.num_errors}, detectors: {decoder.num_detectors}, "
+        f"observables: {decoder.num_observables}, final qubits tracked: "
+        f"{len(decoder.final_qubits)}"
+    )
 
     # Reference: the standard pymatching workflow, for cross-checking.
     dem_ref = circuit.detector_error_model(decompose_errors=True)

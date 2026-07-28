@@ -182,10 +182,29 @@ class PhysicalFrameDecoder:
       - a per-qubit Pauli frame at each fault's own circuit location, and
       - a per-final-measurement correction to XOR onto readout, obtained by
         actually simulating each candidate fault forward through the circuit.
+
+    Parameters
+    ----------
+    circuit :
+        Noisy stim circuit to decode.
+    decompose_errors :
+        Forwarded to ``circuit.detector_error_model``.
+    lazy :
+        If True, defer each fault's final-frame simulation until that fault
+        is first selected by ``decode()`` (or first read from
+        ``final_frame_contributions``), then cache it. If False (default),
+        resolve every fault at construction time so decode pays only matching
+        cost.
     """
 
-    def __init__(self, circuit: stim.Circuit, decompose_errors: bool = True):
+    def __init__(
+        self,
+        circuit: stim.Circuit,
+        decompose_errors: bool = True,
+        lazy: bool = False,
+    ):
         self.circuit = circuit
+        self.lazy = lazy
         dem = circuit.detector_error_model(decompose_errors=decompose_errors)
         self.dem = dem.flattened()
         self.num_detectors = dem.num_detectors
@@ -202,6 +221,8 @@ class PhysicalFrameDecoder:
         noisy_flat = list(circuit.flattened())
         # Stage 2: one noiseless TableauSimulator pass with TICK checkpoints.
         checkpoints, baseline_record = _build_tick_checkpoints(noisy_flat)
+        self._noisy_flat = noisy_flat
+        self._checkpoints = checkpoints
         self._baseline_final = baseline_record[self._final_meas_indices]
 
         # --- build check matrix + per-fault Pauli/propagation info ---
@@ -233,7 +254,7 @@ class PhysicalFrameDecoder:
         flat_dem = stim.DetectorErrorModel()
         merged_det_rows, merged_det_cols, merged_weights = [], [], []
         merged_obs_rows, merged_obs_cols = [], []
-        
+
         symptom_keys_for_fault = []
 
         for g, (key, members) in enumerate(groups.items()):
@@ -288,23 +309,23 @@ class PhysicalFrameDecoder:
                 f"first missing={next(iter(missing))}"
             )
 
-        # 4. Populate error_to_paulis and final_frame_contributions via
-        # checkpointed TableauSimulator suffix replay (Stage 2).
+        # 4. Extract per-fault Paulis + instruction offsets (cheap). Final-frame
+        # contributions are simulated eagerly or lazily (Stage 3) below.
         self.error_to_paulis: dict[int, list[tuple[int, str]]] = {}
-        self.final_frame_contributions: dict[int, set[int]] = {}
+        self._fault_offsets: dict[int, int | None] = {}
+        self._final_frame_contributions: dict[int, set[int]] = {}
 
         for i in range(self.num_errors):
             key = symptom_keys_for_fault[i]
             explained = symptom_to_explained[key]
 
-            paulis = []
-            contribution = set()
             if not explained.circuit_error_locations:
                 raise RuntimeError(
                     f"batched explain returned no circuit location for fault {i} "
                     f"with symptom key {key}"
                 )
             loc = explained.circuit_error_locations[0]
+            paulis = []
             for gtc in loc.flipped_pauli_product:
                 gt = gtc.gate_target
                 if gt.is_x_target:
@@ -317,16 +338,17 @@ class PhysicalFrameDecoder:
                     continue
                 paulis.append((gt.value, pauli))
 
-            if paulis:
-                target_offset = loc.stack_frames[0].instruction_offset
-                result = _simulate_fault_from_checkpoint(
-                    noisy_flat, checkpoints, target_offset, paulis
-                )
-                flipped = result[self._final_meas_indices] != self._baseline_final
-                contribution = set(np.where(flipped)[0].tolist())
-
             self.error_to_paulis[i] = paulis
-            self.final_frame_contributions[i] = contribution
+            self._fault_offsets[i] = (
+                loc.stack_frames[0].instruction_offset if paulis else None
+            )
+
+        if not lazy:
+            for i in range(self.num_errors):
+                self._resolve_contribution(i)
+            # Checkpoints no longer needed once everything is resolved.
+            self._checkpoints = None
+            self._noisy_flat = None
 
         weights = np.array(merged_weights)
         self.H = sp.csc_matrix(
@@ -344,6 +366,38 @@ class PhysicalFrameDecoder:
         # ties in the minimum-weight matching can be broken differently
         # between two decode() calls and the outputs silently disagree.
         self.matching_phys = pymatching.Matching.from_check_matrix(self.H, weights=weights)
+
+    def _resolve_contribution(self, i: int) -> set[int]:
+        """Compute (and memoize) fault i's final-measurement flip set."""
+        if i in self._final_frame_contributions:
+            return self._final_frame_contributions[i]
+
+        paulis = self.error_to_paulis[i]
+        offset = self._fault_offsets[i]
+        if not paulis or offset is None:
+            contribution: set[int] = set()
+        else:
+            if self._checkpoints is None or self._noisy_flat is None:
+                raise RuntimeError(
+                    "fault resolution data was discarded; construct with lazy=True "
+                    "to keep checkpoints for on-demand resolution"
+                )
+            result = _simulate_fault_from_checkpoint(
+                self._noisy_flat, self._checkpoints, offset, paulis
+            )
+            flipped = result[self._final_meas_indices] != self._baseline_final
+            contribution = set(np.where(flipped)[0].tolist())
+
+        self._final_frame_contributions[i] = contribution
+        return contribution
+
+    @property
+    def final_frame_contributions(self) -> dict[int, set[int]]:
+        """Per-fault sets of local final-measurement indices flipped by that
+        fault. Resolves any still-pending faults on first full-table access."""
+        for i in range(self.num_errors):
+            self._resolve_contribution(i)
+        return self._final_frame_contributions
 
     def decode(self, syndrome: np.ndarray):
         """
@@ -378,7 +432,7 @@ class PhysicalFrameDecoder:
                 x1, z1 = table[frame.get(qubit, 'I')]
                 x2, z2 = table[pauli]
                 frame[qubit] = inv[(x1 ^ x2, z1 ^ z2)]
-            for local_idx in self.final_frame_contributions[i]:
+            for local_idx in self._resolve_contribution(i):
                 final_local[local_idx] ^= 1
 
         final_correction = {q: int(b) for q, b in zip(self.final_qubits, final_local)}

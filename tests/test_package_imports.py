@@ -21,6 +21,7 @@ def test_public_api_exports():
         "F2Tensor",
         "PackedF2Matrix",
         "add_loss_noise",
+        "PhysicalFrameDecoder",
     }
     for name in expected:
         assert hasattr(qec_loss, name)

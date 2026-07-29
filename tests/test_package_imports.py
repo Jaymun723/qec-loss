@@ -22,6 +22,10 @@ def test_public_api_exports():
         "PackedF2Matrix",
         "add_loss_noise",
         "PhysicalFrameDecoder",
+        "canonicalize_dem_components",
+        "decompose_errors",
+        "is_graphlike",
+        "combine_dems",
     }
     for name in expected:
         assert hasattr(qec_loss, name)

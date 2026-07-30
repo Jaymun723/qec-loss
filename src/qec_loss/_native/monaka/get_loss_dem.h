@@ -38,6 +38,36 @@ stim::DetectorErrorModel
 combine_circuits_into_dem(const std::vector<stim::Circuit> &circuits,
                           const std::vector<double> weights);
 
+/// Weighted merge of already-extracted DEMs: error mechanisms with identical
+/// targets get their probabilities summed after scaling by `weights`. Mirrors
+/// `qec_loss.combine_dems` (Python) and the inner loop of
+/// `combine_circuits_into_dem`.
+stim::DetectorErrorModel
+combine_dems_native(const std::vector<stim::DetectorErrorModel> &dems,
+                    const std::vector<double> &weights);
+
+/// Detector error model allowing undeterministic detectors AND observables.
+/// C++ port of `surface_boss.utils.get_detector_error_model` with
+/// `decompose_errors=False`: each OBSERVABLE_INCLUDE is converted to a
+/// temporary DETECTOR (so undeterministic observables are tolerated via
+/// `allow_gauge_detectors`), and the resulting extra detectors are mapped
+/// back to logical observables afterwards.
+stim::DetectorErrorModel
+circuit_to_dem_gauge_observables(const stim::Circuit &circuit);
+
+/// Effective DEM for a life segment without observable rerouting, using the
+/// gauge-observable trick of `circuit_to_dem_gauge_observables`. This matches
+/// the semantics of the Python reference pipeline
+/// (`get_loss_rewritten_circuits` + `surface_boss.utils.get_detector_error_model`
+/// + `qec_loss.combine_dems`) used by the delayed erasure decoder.
+stim::DetectorErrorModel
+get_loss_segment_dem(const LossyCircuit &circuit,
+                     const LifeSegment &life_segment);
+
+std::vector<stim::DetectorErrorModel>
+get_loss_segment_dems(const LossyCircuit &circuit,
+                      const std::vector<LifeSegment> &life_segments);
+
 std::vector<stim::Circuit> get_loss_rewritten_circuits(
     const LossyCircuit &circuit, const std::vector<uint32_t> &lost_qubits,
     const LifeSegment &life_segment, bool optimize_rerouting);

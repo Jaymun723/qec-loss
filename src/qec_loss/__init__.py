@@ -12,6 +12,8 @@ from qec_loss.monaka import (
     MonakaBuilder,
     combine_circuits_into_dem,
     get_loss_dem,
+    get_loss_segment_dem,
+    get_loss_segment_dems,
 )
 from qec_loss.observable import DetsRerouter, PauliRerouter, get_stabilizers
 from qec_loss.sampler import ForwardSampler, SampleBatch, Sampler
@@ -39,6 +41,8 @@ __all__ = [
     "combine_dems",
     "decompose_errors",
     "get_loss_dem",
+    "get_loss_segment_dem",
+    "get_loss_segment_dems",
     "get_stabilizers",
     "is_graphlike",
 ]

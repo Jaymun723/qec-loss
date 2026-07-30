@@ -5,6 +5,8 @@ from qec_loss._native import (
     combine_circuits_into_dem,
     get_loss_dem,
     get_loss_rewritten_circuits,
+    get_loss_segment_dem,
+    get_loss_segment_dems,
 )
 
 __all__ = [
@@ -14,4 +16,6 @@ __all__ = [
     "combine_circuits_into_dem",
     "get_loss_dem",
     "get_loss_rewritten_circuits",
+    "get_loss_segment_dem",
+    "get_loss_segment_dems",
 ]

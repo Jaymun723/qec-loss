@@ -17,6 +17,8 @@ def test_public_api_exports():
         "LifeCycleManager",
         "LifeSegment",
         "get_loss_dem",
+        "get_loss_segment_dem",
+        "get_loss_segment_dems",
         "combine_circuits_into_dem",
         "F2Tensor",
         "PackedF2Matrix",
@@ -34,7 +36,7 @@ def test_public_api_exports():
 def test_submodule_reexports():
     from qec_loss.circuit import LossInstruction, LossyCircuit
     from qec_loss.f2_tensor import F2Tensor, PackedF2Matrix
-    from qec_loss.monaka import MonakaBuilder, get_loss_dem
+    from qec_loss.monaka import MonakaBuilder, get_loss_dem, get_loss_segment_dem, get_loss_segment_dems
     from qec_loss.observable import DetsRerouter, PauliRerouter
     from qec_loss.sampler import ForwardSampler, SampleBatch
 
@@ -46,5 +48,7 @@ def test_submodule_reexports():
     assert PauliRerouter is qec_loss.PauliRerouter
     assert MonakaBuilder is qec_loss.MonakaBuilder
     assert get_loss_dem is qec_loss.get_loss_dem
+    assert get_loss_segment_dem is qec_loss.get_loss_segment_dem
+    assert get_loss_segment_dems is qec_loss.get_loss_segment_dems
     assert F2Tensor is qec_loss.F2Tensor
     assert PackedF2Matrix is qec_loss.PackedF2Matrix

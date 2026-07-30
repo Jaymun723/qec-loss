@@ -34,6 +34,8 @@ __all__: list[str] = [
     "combine_circuits_into_dem",
     "get_loss_dem",
     "get_loss_rewritten_circuits",
+    "get_loss_segment_dem",
+    "get_loss_segment_dems",
     "get_stabilizers",
 ]
 
@@ -508,6 +510,19 @@ def get_loss_rewritten_circuits(
 def get_loss_rewritten_circuits(circuit: LossyCircuit, life_segment: LifeSegment) -> list[stim.Circuit]:
     """
     Get rewritten circuits accounting for lost qubits in a segment.
+    """
+
+def get_loss_segment_dem(circuit: LossyCircuit, life_segment: LifeSegment) -> stim.DetectorErrorModel:
+    """
+    Get the effective DetectorErrorModel for a life segment without observable
+    rerouting, tolerating undeterministic observables (gauge-observable trick).
+    """
+
+def get_loss_segment_dems(
+    circuit: LossyCircuit, life_segments: collections.abc.Sequence[LifeSegment]
+) -> list[stim.DetectorErrorModel]:
+    """
+    Get effective DEMs for a batch of life segments without observable rerouting.
     """
 
 def get_stabilizers(circuit: typing.Any) -> list: ...

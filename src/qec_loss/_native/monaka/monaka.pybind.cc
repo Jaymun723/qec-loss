@@ -138,6 +138,36 @@ void pybind_monaka_builder(py::module &m) {
         R"doc(Get the effective DetectorErrorModel for a life segment with lost qubits.)doc");
 
     m.def(
+        "get_loss_segment_dem",
+        [](const LossyCircuit &circuit, const LifeSegment &life_segment) {
+            stim::DetectorErrorModel dem =
+                get_loss_segment_dem(circuit, life_segment);
+            return py::module_::import("stim").attr("DetectorErrorModel")(
+                dem.str());
+        },
+        py::arg("circuit"), py::arg("life_segment"),
+        R"doc(Get the effective DetectorErrorModel for a life segment without observable rerouting, tolerating undeterministic observables.)doc");
+
+    m.def(
+        "get_loss_segment_dems",
+        [](const LossyCircuit &circuit,
+           const std::vector<LifeSegment> &life_segments) {
+            std::vector<stim::DetectorErrorModel> dems;
+            {
+                py::gil_scoped_release release;
+                dems = get_loss_segment_dems(circuit, life_segments);
+            }
+            std::vector<py::object> py_dems;
+            for (const auto &dem : dems) {
+                py_dems.push_back(py::module_::import("stim").attr(
+                    "DetectorErrorModel")(dem.str()));
+            }
+            return py_dems;
+        },
+        py::arg("circuit"), py::arg("life_segments"),
+        R"doc(Get effective DEMs for a batch of life segments without observable rerouting.)doc");
+
+    m.def(
         "combine_circuits_into_dem",
         [](const std::vector<py::object> &py_circuits,
            const std::optional<std::vector<double>> &weights) -> py::object {

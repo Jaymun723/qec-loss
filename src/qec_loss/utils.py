@@ -1,10 +1,30 @@
 import stim
 
 
+def flattened_instructions(circuit: stim.Circuit) -> list[stim.CircuitInstruction]:
+    """Flatten a circuit into plain instructions.
+
+    `Circuit.flattened()` expands REPEAT blocks, so no `CircuitRepeatBlock` can
+    survive it -- but iterating a `Circuit` is still typed as yielding either.
+    """
+    return [instr for instr in circuit.flattened() if isinstance(instr, stim.CircuitInstruction)]
+
+
+def flattened_dem_instructions(dem: stim.DetectorErrorModel) -> list[stim.DemInstruction]:
+    """Flatten a circuit into plain instructions.
+
+    `Circuit.flattened()` expands REPEAT blocks, so no `CircuitRepeatBlock` can
+    survive it -- but iterating a `Circuit` is still typed as yielding either.
+    """
+    return [instr for instr in dem.flattened() if isinstance(instr, stim.DemInstruction)]
+
+
 def count_measurements(circuit: stim.Circuit) -> int:
     """Count the total number of measurement targets in a stim circuit."""
     return sum(
-        len(instr.targets_copy()) for instr in circuit.flattened() if instr.name in {"M", "MR", "MRX", "MRY", "MRZ"}
+        len(instr.targets_copy())
+        for instr in flattened_instructions(circuit)
+        if instr.name in {"M", "MR", "MRX", "MRY", "MRZ"}
     )
 
 

@@ -16,7 +16,10 @@ endif()
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     add_compile_options(-include cstdint -fno-strict-aliasing -O3 -g0)
 endif()
-
+# if(DEFINED ENV{VIRTUAL_ENV})
+#     set(Python_EXECUTABLE "$ENV{VIRTUAL_ENV}/bin/python" CACHE FILEPATH "Path to Python interpreter" FORCE)
+#     set(Python3_EXECUTABLE "$ENV{VIRTUAL_ENV}/bin/python" CACHE FILEPATH "Path to Python3 interpreter" FORCE)
+# endif()
 find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)
 
 # Prefer a system-installed pybind11, but fall back to fetching it at configure

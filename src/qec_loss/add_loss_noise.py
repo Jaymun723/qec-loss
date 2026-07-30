@@ -1,7 +1,7 @@
 import stim
 
 from qec_loss.circuit import LossInstruction, LossyCircuit
-from qec_loss.utils import _1Q_GATES, _2Q_GATES, _RESET_GATES
+from qec_loss.utils import _1Q_GATES, _2Q_GATES, _RESET_GATES, flattened_instructions
 
 
 def _qubit_targets(instruction: stim.CircuitInstruction) -> list[int]:
@@ -30,7 +30,7 @@ def add_loss_noise(
         A new circuit with loss noise added.
     """
     lines: list[str] = []
-    for instruction in circuit.flattened():
+    for instruction in flattened_instructions(circuit):
         if instruction.name in _2Q_GATES and loss_before_2_qubit_gate > 0.0:
             lines.append(str(LossInstruction(_qubit_targets(instruction), loss_before_2_qubit_gate)))
         lines.append(str(instruction))

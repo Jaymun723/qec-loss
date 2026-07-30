@@ -2,7 +2,10 @@ from importlib.metadata import version
 
 from qec_loss.add_loss_noise import add_loss_noise
 from qec_loss.circuit import LossInstruction, LossyCircuit
+from qec_loss.combine_dems import combine_dems
+from qec_loss.decompose_errors import canonicalize_dem_components, decompose_errors, is_graphlike
 from qec_loss.f2_tensor import F2Tensor, PackedF2Matrix
+from qec_loss.frame import PhysicalFrameDecoder
 from qec_loss.monaka import (
     LifeCycleManager,
     LifeSegment,
@@ -16,21 +19,26 @@ from qec_loss.sampler import ForwardSampler, SampleBatch, Sampler
 __version__ = version("qec-loss")
 
 __all__ = [
-    "__version__",
-    "LossInstruction",
-    "LossyCircuit",
-    "ForwardSampler",
-    "SampleBatch",
-    "Sampler",
     "DetsRerouter",
-    "PauliRerouter",
-    "get_stabilizers",
-    "MonakaBuilder",
+    "F2Tensor",
+    "ForwardSampler",
     "LifeCycleManager",
     "LifeSegment",
-    "get_loss_dem",
-    "combine_circuits_into_dem",
-    "F2Tensor",
+    "LossInstruction",
+    "LossyCircuit",
+    "MonakaBuilder",
     "PackedF2Matrix",
+    "PauliRerouter",
+    "PhysicalFrameDecoder",
+    "SampleBatch",
+    "Sampler",
+    "__version__",
     "add_loss_noise",
+    "canonicalize_dem_components",
+    "combine_circuits_into_dem",
+    "combine_dems",
+    "decompose_errors",
+    "get_loss_dem",
+    "get_stabilizers",
+    "is_graphlike",
 ]

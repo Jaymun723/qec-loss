@@ -61,6 +61,61 @@ rerouter = DetsRerouter(circuit, data_qubits=[0, 2])
 targets = rerouter.reroute(observable_index=0, lost_qubits=[0], optimize=True)
 ```
 
+## Physical frame decoding
+
+`PhysicalFrameDecoder` turns a syndrome into a per-qubit correction you can
+XOR onto final data measurements. ``OBSERVABLE_INCLUDE`` is optional: without
+it the decoder still tracks every non-reset ``M``/``MX``/``MY``/``MZ`` target
+(the final data layer in a typical memory experiment) and returns
+``final_correction`` for all of them. Matching uses detectors only;
+``predicted_obs`` is empty — fold corrections into your own logical.
+
+```python
+import stim
+from qec_loss.frame import PhysicalFrameDecoder
+
+circuit = stim.Circuit.generated(
+    "surface_code:rotated_memory_z",
+    distance=3,
+    rounds=3,
+    after_clifford_depolarization=0.01,
+)
+
+# Drop OBSERVABLE_INCLUDE entirely — not needed for frame / final_correction.
+circuit_no_obs = stim.Circuit()
+for instr in circuit:
+    if instr.name != "OBSERVABLE_INCLUDE":
+        circuit_no_obs.append(instr)
+
+decoder = PhysicalFrameDecoder(circuit_no_obs)  # tracks all 9 data qubits
+# Or restrict: PhysicalFrameDecoder(circuit_no_obs, data_qubits=[1, 3, 5])
+
+measurements = circuit_no_obs.compile_sampler().sample(shots=100)
+dets = circuit_no_obs.compile_m2d_converter().convert(
+    measurements=measurements, append_observables=False
+)
+
+fault_vector, frame, predicted_obs, final_correction = decoder.decode(dets[0])
+# final_correction: {qubit: 0/1} for every tracked data qubit
+# predicted_obs is empty (no OBSERVABLE_INCLUDE)
+
+# Apply the frame to every final data measurement:
+corrected = {
+    q: int(measurements[0, m]) ^ final_correction[q]
+    for m, q in zip(decoder._final_meas_indices, decoder.final_qubits)
+}
+# Then XOR any logical support you care about, e.g. Z-logical on qubits 1,3,5:
+logical = corrected[1] ^ corrected[3] ^ corrected[5]
+```
+
+If the circuit *does* keep ``OBSERVABLE_INCLUDE``, ``obs_groups`` /
+``predicted_obs`` still work, and ``final_correction`` remains a correction
+for **all** data qubits (not only the observable support).
+
+`decode_batch` is the same pipeline over many shots via
+`pymatching.Matching.decode_batch`. Pass `lazy=True` to defer per-fault
+simulation until a fault is first selected.
+
 ## Module layout
 
 | Module | Contents |
@@ -70,5 +125,6 @@ targets = rerouter.reroute(observable_index=0, lost_qubits=[0], optimize=True)
 | `qec_loss.observable` | `DetsRerouter`, `PauliRerouter`, `get_stabilizers` |
 | `qec_loss.monaka` | `MonakaBuilder`, `LifeCycleManager`, `get_loss_dem`, ... |
 | `qec_loss.f2_tensor` | `F2Tensor`, `PackedF2Matrix` |
+| `qec_loss.frame` | `PhysicalFrameDecoder` |
 
 The compiled extension lives at `qec_loss._native` and should not be imported directly.

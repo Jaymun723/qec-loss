@@ -37,3 +37,31 @@ def test_lossy_circuit_example():
         M 0 1
         DETECTOR rec[-1] rec[-2]
     """)
+
+def test_compile_forward_sampler():
+    from qec_loss import ForwardSampler
+    lossy_circuit = LossyCircuit("""
+        R 0 1
+        LOSS(0.1) 0 1
+        M 0 1
+        DETECTOR rec[-1] rec[-2]
+    """)
+    sampler = lossy_circuit.compile_forward_sampler()
+    assert isinstance(sampler, ForwardSampler)
+    
+    sampler_with_seed = lossy_circuit.compile_forward_sampler(seed=42)
+    assert isinstance(sampler_with_seed, ForwardSampler)
+
+def test_compile_monaka_builder():
+    from qec_loss import MonakaBuilder
+    lossy_circuit = LossyCircuit("""
+        R 0 1
+        LOSS(0.1) 0 1
+        M 0 1
+        DETECTOR rec[-1] rec[-2]
+    """)
+    builder = lossy_circuit.compile_monaka_builder()
+    assert isinstance(builder, MonakaBuilder)
+    
+    builder_with_opt = lossy_circuit.compile_monaka_builder(optimize_rerouting=True)
+    assert isinstance(builder_with_opt, MonakaBuilder)

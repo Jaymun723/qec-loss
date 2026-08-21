@@ -18,7 +18,8 @@ Please first install [uv](https://docs.astral.sh/uv/getting-started/installation
 
 ```bash
 git submodule update --init --recursive
-uv pip install -e . --no-build-isolation --group dev
+uv sync --dev
+uv pip install -e . --no-build-isolation
 uv run pre-commit install
 ```
 

@@ -7,8 +7,8 @@ name = "qec-loss"
 dynamic = ["version"]
 description = "Sample lossy quantum error correction code."
 readme = "README.md"
-author = [
-    {name = "Victor Caro", email = "victor.caro@polytechnique.org"}
+authors = [
+    { name = "Victor Caro", email = "victor.caro@polytechnique.org" }
 ]
 keywords = ["stim", "qec", "loss", "atom-loss"]
 requires-python = ">=3.10"

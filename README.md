@@ -4,7 +4,9 @@ Python package for sampling and decoding quantum error correction circuits with 
 
 ## Install
 
-From [pypi](https://pypi.org/):
+Requires Python 3.10 or newer.
+
+From [pypi](https://pypi.org/project/qec-loss/):
 
 ```bash
 pip install qec-loss
@@ -18,6 +20,7 @@ Please first install [uv](https://docs.astral.sh/uv/getting-started/installation
 
 ```bash
 git submodule update --init --recursive
+uv sync --dev
 uv pip install -e . --no-build-isolation --group dev
 uv run pre-commit install
 ```

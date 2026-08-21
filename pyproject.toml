@@ -7,7 +7,7 @@ name = "qec-loss"
 dynamic = ["version"]
 description = "Sample lossy quantum error correction code."
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.10"
 dependencies = [
     "stim>=1.16.0",
 ]
@@ -40,7 +40,7 @@ dev = [
 
 [tool.ruff]
 line-length = 120
-target-version = "py314"
+target-version = "py310"
 src = ["src", "tests"]
 
 [tool.ruff.format]

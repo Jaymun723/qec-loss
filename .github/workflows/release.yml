@@ -21,7 +21,7 @@ jobs:
       - name: Build wheels
         uses: pypa/cibuildwheel@v4.1.0
         env:
-          CIBW_BUILD: "cp314-*" # Only build for python 3.14+ as per pyproject.toml requires-python
+          CIBW_BUILD: "cp310-* cp311-* cp312-* cp313-* cp314-*" # CPython 3.10+ as per pyproject.toml requires-python
           CIBW_ARCHS_MACOS: "x86_64 arm64"
 
       - uses: actions/upload-artifact@v7

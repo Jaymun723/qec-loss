@@ -7,10 +7,20 @@ name = "qec-loss"
 dynamic = ["version"]
 description = "Sample lossy quantum error correction code."
 readme = "README.md"
+author = [
+    {name = "Victor Caro", email = "victor.caro@polytechnique.org"}
+]
+keywords = ["stim", "qec", "loss", "atom-loss"]
 requires-python = ">=3.10"
 dependencies = [
     "stim>=1.16.0",
 ]
+
+[project.urls]
+homepage = "https://github.com/Jaymun723/qec-loss/"
+documentation = "https://github.com/Jaymun723/qec-loss/blob/main/docs/api.md"
+source = "https://github.com/Jaymun723/qec-loss.git"
+issues = "https://github.com/Jaymun723/qec-loss/issues"
 
 [tool.scikit-build]
 cmake.version = ">=3.20"
